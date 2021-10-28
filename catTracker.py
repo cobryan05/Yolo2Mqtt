@@ -13,7 +13,13 @@ sys.path.append(os.path.join(submodules_dir, "yolov5"))
 from trackerTools.yoloInference import YoloInference
 from src.mqttClient import MqttClient
 from src.watcher import Watcher
+from src.imgSources.urlSource import UrlSource
+from src.imgSources.videoSource import VideoSource
 # fmt: on
+
+
+CONFIG_KEY_SNAPSHOT_URL = "snapshot-url"
+CONFIG_KEY_VIDEO_PATH = "video-path"
 
 
 class CatTracker:
@@ -37,11 +43,14 @@ class CatTracker:
 
         self.watchers: dict[str, Watcher] = {}
         for key, cameraInfo in config.get("cameras", {}).items():
-            url = cameraInfo.get("snapshot-url", None)
+            source = CatTracker.getSource(cameraInfo)
+            if source is None:
+                print("Couldn't create source for [{key}]")
+                continue
             modelName = cameraInfo.get("model", None)
             model = self.models[modelName]
             refreshDelay = cameraInfo.get("refresh", 5)
-            self.watchers[key] = Watcher(url=url, model=model, refreshDelay=refreshDelay)
+            self.watchers[key] = Watcher(source=source, model=model, refreshDelay=refreshDelay)
 
         print(f"Starting {len(self.watchers)} watchers...")
         threads: list[threading.Thread] = []
@@ -53,6 +62,17 @@ class CatTracker:
         # Wait until all threads exit (forever?)
         for thread in threads:
             thread.join()
+
+    @staticmethod
+    def getSource(cameraConfig: dict):
+        ''' Returns a source for the given camera config'''
+        if CONFIG_KEY_VIDEO_PATH in cameraConfig:
+            return VideoSource(cameraConfig[CONFIG_KEY_VIDEO_PATH])
+
+        if CONFIG_KEY_SNAPSHOT_URL in cameraConfig:
+            return UrlSource(cameraConfig[CONFIG_KEY_SNAPSHOT_URL])
+
+        return None
 
     def run(self):
         pass

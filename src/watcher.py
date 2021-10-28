@@ -1,15 +1,11 @@
 ''' Class to watch for objects in an image stream '''
 
 from threading import Event
-import urllib.request
 import time
-
-import cv2
-import numpy as np
 
 from trackerTools.yoloInference import YoloInference
 from trackerTools.bboxTracker import BBoxTracker
-
+from . imgSources.source import Source
 
 METAKEY_LOST_TIMESTAMP = "losttime"
 METAKEY_LABEL = "label"
@@ -21,10 +17,10 @@ LOST_OBJ_REMOVE_DELAY = 10
 
 class Watcher:
 
-    def __init__(self, url: str, model: YoloInference, refreshDelay: int = 1):
-        self._url: str = url
+    def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, debug: bool = False):
+        self._source: Source = source
         self._model: YoloInference = model
-        self._delay: int = refreshDelay
+        self._delay: float = refreshDelay
         self._stopEvent: Event = Event()
         self._bboxTracker: BBoxTracker = BBoxTracker()
 
@@ -32,12 +28,12 @@ class Watcher:
         self._stopEvent.set()
 
     def run(self):
-        print(f"Starting Watcher on URL [{self._url}], refreshing every {self._delay} seconds")
+        print(f"Starting Watcher with [{self._source}], refreshing every {self._delay} seconds")
         while True:
             if self._stopEvent.wait(timeout=self._delay):
                 break
 
-            img = self._downloadImage()
+            img = self._source.getNextFrame()
             res = self._model.runInference(img)
 
             detections = [det[0] for det in res]
@@ -83,8 +79,3 @@ class Watcher:
             print("------")
 
         print("Exit")
-
-    def _downloadImage(self):
-        req = urllib.request.urlopen(self._url)
-        buffer = np.array(bytearray(req.read()), dtype=np.uint8)
-        return cv2.imdecode(buffer, flags=cv2.IMREAD_COLOR)
