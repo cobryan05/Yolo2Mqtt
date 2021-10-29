@@ -50,7 +50,7 @@ class CatTracker:
             modelName = cameraInfo.get("model", None)
             model = self.models[modelName]
             refreshDelay = cameraInfo.get("refresh", 5)
-            self.watchers[key] = Watcher(source=source, model=model, refreshDelay=refreshDelay)
+            self.watchers[key] = Watcher(source=source, model=model, refreshDelay=refreshDelay, debug=args.debug)
 
         print(f"Starting {len(self.watchers)} watchers...")
         threads: list[threading.Thread] = []
@@ -83,6 +83,7 @@ def parseArgs():
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--config', help="Configuration file",
                         required=False, default="config.json")
+    parser.add_argument('--debug', help="Show labeled images", action='store_true', default=False)
 
     return parser.parse_args()
 

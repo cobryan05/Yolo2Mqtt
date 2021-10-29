@@ -2,6 +2,8 @@
 
 from threading import Event
 import time
+import cv2
+import numpy as np
 
 from trackerTools.yoloInference import YoloInference
 from trackerTools.bboxTracker import BBoxTracker
@@ -23,12 +25,20 @@ class Watcher:
         self._delay: float = refreshDelay
         self._stopEvent: Event = Event()
         self._bboxTracker: BBoxTracker = BBoxTracker()
+        self._debug = debug
 
     def stop(self):
         self._stopEvent.set()
 
     def run(self):
         print(f"Starting Watcher with [{self._source}], refreshing every {self._delay} seconds")
+
+        if self._debug:
+            dbgWin = f"DebugWindow {self._source}"
+            cv2.namedWindow(dbgWin)
+        else:
+            dbgWin = None
+
         while True:
             if self._stopEvent.wait(timeout=self._delay):
                 break
@@ -76,6 +86,26 @@ class Watcher:
                         self._bboxTracker.updateBox(key, metadata=obj.metadata)
 
                 print(f"{key} - {obj.metadata} {label}")
+
+            if self._debug:
+                dbgImg = img.copy()
+                for key, tracker in self._bboxTracker.getTrackedObjects().items():
+                    Watcher.drawTrackerOnImage(dbgImg, tracker)
+                cv2.imshow(dbgWin, dbgImg)
+                cv2.waitKey(1)
+
             print("------")
 
         print("Exit")
+
+    @staticmethod
+    def drawTrackerOnImage(img: np.array, tracker: BBoxTracker.Tracker, color: tuple[int, int, int] = (255, 255, 255)):
+        imgY, imgX = img.shape[:2]
+        x1, y1, x2, y2 = tracker.bbox.asX1Y1X2Y2(imgX, imgY)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color)
+
+        objClass = tracker.metadata.get(METAKEY_LABEL, "")
+        objConf = tracker.metadata.get(METAKEY_CONFIDENCE, 0.0)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        label = f"{tracker.key} - {objClass} {objConf:0.2}"
+        cv2.putText(img, label, (x1, y1 - 5), font, 0.6, color, 1, cv2.LINE_AA)
