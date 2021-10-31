@@ -157,12 +157,18 @@ class Watcher:
 
     @staticmethod
     def drawTrackerOnImage(img: np.array, tracker: BBoxTracker.Tracker, color: tuple[int, int, int] = (255, 255, 255)):
+        if METAKEY_LOST_FRAMES in tracker.metadata:
+            lostFrames = tracker.metadata[METAKEY_LOST_FRAMES]
+            red = 255 * (LOST_OBJ_REMOVE_FRAME_CNT - lostFrames)/LOST_OBJ_REMOVE_FRAME_CNT
+            color = (0, 0, red)
+
         imgY, imgX = img.shape[:2]
         x1, y1, x2, y2 = tracker.bbox.asX1Y1X2Y2(imgX, imgY)
         cv2.rectangle(img, (x1, y1), (x2, y2), color)
 
         objClass = tracker.metadata.get(METAKEY_LABEL, "")
         objConf = tracker.metadata.get(METAKEY_CONF, 0.0)
+
         font = cv2.FONT_HERSHEY_SIMPLEX
         label = f"{tracker.key} - {objClass} {objConf:0.2}"
-        cv2.putText(img, label, (x1, y1 - 5), font, 0.6, color, 1, cv2.LINE_AA)
+        cv2.putText(img, label, (x1, y1 + 16), font, 0.6, color, 1, cv2.LINE_AA)
