@@ -16,6 +16,7 @@ METAKEY_CONF_DICT = "confdict"
 
 # How long must an object be lost before removed
 LOST_OBJ_REMOVE_FRAME_CNT = 10
+BBOX_TRACKER_MAX_DIST_THRESH = 0.5
 
 
 class Watcher:
@@ -44,7 +45,7 @@ class Watcher:
         self._model: YoloInference = model
         self._delay: float = refreshDelay
         self._stopEvent: Event = Event()
-        self._bboxTracker: BBoxTracker = BBoxTracker()
+        self._bboxTracker: BBoxTracker = BBoxTracker(distThresh=BBOX_TRACKER_MAX_DIST_THRESH)
         self._debug = debug
 
     def stop(self):
@@ -68,7 +69,7 @@ class Watcher:
 
             detections = []
             metadata = []
-            SAME_BOX_THRESH = 0.1
+            SAME_BOX_THRESH = 0.01
             for bbox, conf, objClass, label in res:
 
                 # Check if this may be a second detection of the same object
