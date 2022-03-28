@@ -1,9 +1,9 @@
 ''' Class to watch for objects in an image stream '''
 
 from threading import Event
-import time
 import cv2
 import numpy as np
+import math
 
 from trackerTools.yoloInference import YoloInference
 from trackerTools.bboxTracker import BBoxTracker
@@ -24,23 +24,59 @@ BBOX_TRACKER_MAX_DIST_THRESH = 0.5  # Percent of image a box can move and still 
 class Watcher:
     class ConfDictEntry:
         def __init__(self, conf: float = None):
+            self._sum: float = 0.0
+            self._sum_sq: float = 0.0
+            self._count: float = 0.0
+            self._min: float = 0.0
+            self._max: float = 0.0
+            self._avg: float = 0.0
+            self._history: list(float) = []
             if conf is not None:
-                self._sum = conf
-                self._count = 1
-            else:
-                self._sum = 0
-                self._count = 0
+                self.addConf(conf)
 
         def __repr__(self):
-            return f"AvgConf: {self.avg}   Cnt: {self._count}"
+            return f"{self.avg - self.stdev:.4}|{self.avg:.4}|{self.avg + self.stdev:.4}   Cnt: {self._count}"
 
         def addConf(self, conf: float):
-            self._sum += conf
             self._count += 1
+            self._history.append(conf)
+            if self._count == 1:
+                self._min = conf
+                self._max = conf
+                self._avg = conf
+            else:
+                prevAvg = self._avg
+                self._avg += (conf - prevAvg) / self._count
+                self._sum_sq += (conf - prevAvg)*(conf-self._avg)
+
+                if conf < self._min:
+                    self._min = conf
+                if conf > self._max:
+                    self._max = conf
+
+        @property
+        def n(self) -> int:
+            return self._count
 
         @property
         def avg(self) -> float:
-            return self._sum / self._count
+            return self._avg
+
+        @property
+        def max(self) -> float:
+            return self._max
+
+        @property
+        def min(self) -> float:
+            return self._min
+
+        @property
+        def variance(self) -> float:
+            return self._sum_sq / (self._count - 1) if self._count > 1 else 0.0
+
+        @property
+        def stdev(self) -> float:
+            return math.sqrt(self.variance)
 
     def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, debug: bool = False):
         self._source: Source = source
