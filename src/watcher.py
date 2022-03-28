@@ -7,6 +7,7 @@ import math
 
 from trackerTools.yoloInference import YoloInference
 from trackerTools.bboxTracker import BBoxTracker
+from trackerTools.objectTracker import ObjectTracker
 from . imgSources.source import Source
 
 METAKEY_LOST_FRAMES = "losttime"
@@ -19,6 +20,8 @@ METAKEY_FRAME_CNT = "frameCnt"
 LOST_OBJ_REMOVE_FRAME_CNT = 20  # How long must an object be lost before removed
 NEW_OBJ_MIN_FRAME_CNT = 2  # How many frames must a new object be present in before considered new
 BBOX_TRACKER_MAX_DIST_THRESH = 0.5  # Percent of image a box can move and still be matched
+MAX_DETECT_INTERVAL = 10  # Maximum amount of frames without full detection
+MIN_CONF_THRESH = 0.6  # Minimum confidence threshold for display
 
 
 class Watcher:
@@ -83,7 +86,7 @@ class Watcher:
         self._model: YoloInference = model
         self._delay: float = refreshDelay
         self._stopEvent: Event = Event()
-        self._bboxTracker: BBoxTracker = BBoxTracker(distThresh=BBOX_TRACKER_MAX_DIST_THRESH)
+        self._objTracker: ObjectTracker = ObjectTracker(distThresh=BBOX_TRACKER_MAX_DIST_THRESH)
         self._debug = debug
 
     def stop(self):
@@ -98,97 +101,116 @@ class Watcher:
         else:
             dbgWin = None
 
+        runDetectCntdwn = 0
         while True:
             if self._stopEvent.wait(timeout=self._delay):
                 break
 
             img = self._source.getNextFrame()
-            res = self._model.runInference(img)
 
-            detections = []
-            metadata = []
-            SAME_BOX_THRESH = 0.01
-            for bbox, conf, objClass, label in res:
+            # First try object tracking on the new image
+            trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img)
+            runDetectCntdwn -= 1
 
-                # Check if this may be a second detection of the same object
-                dupIdx = -1
-                for idx, prevDet in enumerate(detections):
-                    if bbox.similar(prevDet, SAME_BOX_THRESH):
-                        dupIdx = idx
-                        break
+            if runDetectCntdwn <= 0 or len(lostObjs) > 0:
+                # If tracking lost an object then run yolo
+                print("Running inference")
+                res = self._model.runInference(img=img)
+                runDetectCntdwn = MAX_DETECT_INTERVAL
 
-                # Merge any duplicate boxes into one
-                if dupIdx != -1:
-                    metadatum = metadata[dupIdx]
-                    metadatum[METAKEY_CONF_DICT][label] = Watcher.ConfDictEntry(conf)
-                    # Label the detection as the higher confidence label
-                    if conf > metadatum[METAKEY_CONF]:
-                        metadatum[METAKEY_CONF] = conf
-                        metadatum[METAKEY_LABEL] = label
-                else:
-                    detections.append(bbox)
-                    metadata.append({METAKEY_LABEL: label,
-                                    METAKEY_CONF: conf,
-                                    METAKEY_CONF_DICT: {label: Watcher.ConfDictEntry(conf)}})
+                detections = []
+                metadata = []
+                SAME_BOX_THRESH = 0.01
+                for bbox, conf, objClass, label in res:
 
-            def metaCompare(left: dict, right: dict):
-                if left.get(METAKEY_LABEL, "") == right.get(METAKEY_LABEL, ""):
-                    return 1.0
-                return 0.5
+                    # Check if this may be a second detection of the same object
+                    dupIdx = -1
+                    for idx, prevDet in enumerate(detections):
+                        if bbox.similar(prevDet, SAME_BOX_THRESH):
+                            dupIdx = idx
+                            break
 
-            trackedObjs, newObjs, lostObjs, detectedKeys = self._bboxTracker.update(
-                detections, metadata=metadata, metadataComp=metaCompare)
-
-            # Process each tracked item
-            for key, obj in trackedObjs.items():
-
-                if key in newObjs:
-                    # Initialize new object metadata
-                    obj.metadata[METAKEY_FRAME_CNT] = 0
-                    obj.metadata[METAKEY_LOST_FRAMES] = 0
-                    self._bboxTracker.updateBox(key, metadata=obj.metadata)
-                elif key in lostObjs:
-                    # If it was lost before reaching the minimum frame count then remove it
-                    if obj.metadata[METAKEY_FRAME_CNT] < NEW_OBJ_MIN_FRAME_CNT:
-                        print(f"{obj.metadata[METAKEY_LABEL]} lost before minimum frame count")
-                        self._bboxTracker.removeBox(key)
+                    # Merge any duplicate boxes into one
+                    if dupIdx != -1:
+                        metadatum = metadata[dupIdx]
+                        metadatum[METAKEY_CONF_DICT][label] = Watcher.ConfDictEntry(conf)
+                        # Label the detection as the higher confidence label
+                        if conf > metadatum[METAKEY_CONF]:
+                            metadatum[METAKEY_CONF] = conf
+                            metadatum[METAKEY_LABEL] = label
                     else:
-                        lostFrames = obj.metadata[METAKEY_LOST_FRAMES] + 1
-                        obj.metadata[METAKEY_LOST_FRAMES] = lostFrames
-                        self._bboxTracker.updateBox(key, metadata=obj.metadata)
+                        detections.append(bbox)
+                        metadata.append({METAKEY_LABEL: label,
+                                        METAKEY_CONF: conf,
+                                        METAKEY_CONF_DICT: {label: Watcher.ConfDictEntry(conf)}})
 
-                        if lostFrames > LOST_OBJ_REMOVE_FRAME_CNT:
-                            print(f"{obj.metadata[METAKEY_LABEL]} lost for {lostFrames}, removing.")
-                            self._bboxTracker.removeBox(key)
-                else:
-                    # A previously tracked object, ensure it isn't marked as lost
-                    obj.metadata[METAKEY_LOST_FRAMES] = 0
-                    obj.metadata[METAKEY_FRAME_CNT] += 1
+                def metaCompare(left: dict, right: dict):
+                    if left.get(METAKEY_LABEL, "") == right.get(METAKEY_LABEL, ""):
+                        return 1.0
+                    return 0.5
 
-                    # Update the object if it was present in our most recent detection
-                    if key in detectedKeys:
-                        objDetIdx = detectedKeys.index(key)
-                        detMeta: dict = metadata[objDetIdx]
-                        detConfDict: dict[str, Watcher.ConfDictEntry] = detMeta[METAKEY_CONF_DICT]
-                        objConfDict: dict[str, Watcher.ConfDictEntry] = obj.metadata[METAKEY_CONF_DICT]
+                trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img, detections=detections,
+                                                                                       metadata=metadata, metadataComp=metaCompare)
 
-                        # Add the current detection confidences to the tracked confidences
-                        for label, entry in detConfDict.items():
-                            objConfEntry: Watcher.ConfDictEntry = objConfDict.setdefault(label, Watcher.ConfDictEntry())
-                            objConfEntry.addConf(entry.avg)
+                # Process each tracked item
+                for key, obj in trackedObjs.items():
 
-                        # Take the highest average confidence as the 'overall' confidence and label
-                        highConfKey: str = max(objConfDict, key=lambda key: objConfDict[key].avg)
-                        obj.metadata[METAKEY_LABEL] = highConfKey
-                        obj.metadata[METAKEY_CONF] = objConfDict[highConfKey].avg
-                        self._bboxTracker.updateBox(key, metadata=obj.metadata)
+                    if key in newObjs:
+                        # Initialize new object metadata
+                        obj.metadata[METAKEY_FRAME_CNT] = 0
+                        obj.metadata[METAKEY_LOST_FRAMES] = 0
+                        self._objTracker.updateBox(key, metadata=obj.metadata)
+                    elif key in lostObjs:
+                        # If it was lost before reaching the minimum frame count then remove it
+                        if obj.metadata[METAKEY_FRAME_CNT] < NEW_OBJ_MIN_FRAME_CNT:
+                            print(f"{obj.metadata[METAKEY_LABEL]} lost before minimum frame count")
+                            self._objTracker.removeBox(key)
+                        else:
+                            lostFrames = obj.metadata[METAKEY_LOST_FRAMES] + 1
+                            obj.metadata[METAKEY_LOST_FRAMES] = lostFrames
+                            self._objTracker.updateBox(key, metadata=obj.metadata)
 
-                print(f"{key} - {obj.metadata}")
+                            if lostFrames > LOST_OBJ_REMOVE_FRAME_CNT:
+                                print(f"{obj.metadata[METAKEY_LABEL]} lost for {lostFrames}, removing.")
+                                self._objTracker.removeBox(key)
+                    else:
+                        # A previously tracked object, ensure it isn't marked as lost
+                        obj.metadata[METAKEY_LOST_FRAMES] = 0
+                        obj.metadata[METAKEY_FRAME_CNT] += 1
+
+                        # Update the object if it was present in our most recent detection
+                        if key in detectedKeys:
+                            objDetIdx = detectedKeys.index(key)
+                            detMeta: dict = metadata[objDetIdx]
+                            detConfDict: dict[str, Watcher.ConfDictEntry] = detMeta[METAKEY_CONF_DICT]
+                            objConfDict: dict[str, Watcher.ConfDictEntry] = obj.metadata[METAKEY_CONF_DICT]
+
+                            # Add the current detection confidences to the tracked confidences
+                            for label, entry in detConfDict.items():
+                                objConfEntry: Watcher.ConfDictEntry = objConfDict.setdefault(
+                                    label, Watcher.ConfDictEntry())
+                                objConfEntry.addConf(entry.avg)
+
+                            # Select best label by comparing bottom of confidence intervals
+                            def calcConf(entry: Watcher.ConfDictEntry):
+                                if entry.n >= NEW_OBJ_MIN_FRAME_CNT:
+                                    return entry.avg - entry.stdev
+                                else:
+                                    return 0
+
+                            highConfKey: str = max(objConfDict, key=lambda key, d=objConfDict: calcConf(d[key]))
+                            highConfEntry: Watcher.ConfDictEntry = objConfDict[highConfKey]
+                            obj.metadata[METAKEY_LABEL] = highConfKey
+                            obj.metadata[METAKEY_CONF] = calcConf(highConfEntry)
+                            self._objTracker.updateBox(key, metadata=obj.metadata)
+
+                    print(f"{key} - {obj.metadata}")
 
             if self._debug:
                 dbgImg = img.copy()
-                for key, tracker in self._bboxTracker.getTrackedObjects().items():
-                    Watcher.drawTrackerOnImage(dbgImg, tracker)
+                for key, tracker in self._objTracker.getTrackedObjects().items():
+                    if tracker.metadata[METAKEY_CONF] >= MIN_CONF_THRESH:
+                        Watcher.drawTrackerOnImage(dbgImg, tracker)
                 cv2.imshow(dbgWin, dbgImg)
                 cv2.waitKey(1)
 
