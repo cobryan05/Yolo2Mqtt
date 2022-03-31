@@ -10,6 +10,7 @@ from trackerTools.yoloInference import YoloInference
 from trackerTools.bboxTracker import BBoxTracker
 from trackerTools.objectTracker import ObjectTracker
 from . imgSources.source import Source
+from . valueStatTracker import ValueStatTracker
 
 METAKEY_LOST_FRAMES = "losttime"
 METAKEY_LABEL = "label"
@@ -26,66 +27,6 @@ MIN_CONF_THRESH = 0.6  # Minimum confidence threshold for display
 
 
 class Watcher:
-    class ConfDictEntry:
-        def __init__(self, conf: float = None):
-            self._sum: float = 0.0
-            self._sum_sq: float = 0.0
-            self._count: float = 0.0
-            self._min: float = 0.0
-            self._max: float = 0.0
-            self._avg: float = 0.0
-            self._history: list(float) = []
-            if conf is not None:
-                self.addConf(conf)
-
-        def __repr__(self):
-            return f"{self.avg - self.stdev:.4}|{self.avg:.4}|{self.avg + self.stdev:.4}   Cnt: {self._count}"
-
-        def addConf(self, conf: float):
-            self._count += 1
-            self._history.append(conf)
-            if self._count == 1:
-                self._min = conf
-                self._max = conf
-                self._avg = conf
-            else:
-                prevAvg = self._avg
-                self._sum += conf
-                self._avg += (conf - prevAvg) / self._count
-                self._sum_sq += (conf - prevAvg)*(conf-self._avg)
-
-                if conf < self._min:
-                    self._min = conf
-                if conf > self._max:
-                    self._max = conf
-
-        @property
-        def n(self) -> int:
-            return self._count
-
-        @property
-        def avg(self) -> float:
-            return self._avg
-
-        @property
-        def max(self) -> float:
-            return self._max
-
-        @property
-        def min(self) -> float:
-            return self._min
-
-        @property
-        def variance(self) -> float:
-            return self._sum_sq / (self._count - 1) if self._count > 1 else 0.0
-
-        @property
-        def stdev(self) -> float:
-            return math.sqrt(self.variance)
-
-        @property
-        def sum(self) -> float:
-            return self._sum
 
     def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, debug: bool = False):
         self._source: Source = source
@@ -145,7 +86,7 @@ class Watcher:
                     # Merge any duplicate boxes into one
                     if dupIdx != -1:
                         metadatum = metadata[dupIdx]
-                        metadatum[METAKEY_CONF_DICT][label] = Watcher.ConfDictEntry(conf)
+                        metadatum[METAKEY_CONF_DICT][label] = ValueStatTracker(conf)
                         # Label the detection as the higher confidence label
                         if conf > metadatum[METAKEY_CONF]:
                             metadatum[METAKEY_CONF] = conf
@@ -154,7 +95,7 @@ class Watcher:
                         detections.append(bbox)
                         metadata.append({METAKEY_LABEL: label,
                                         METAKEY_CONF: conf,
-                                        METAKEY_CONF_DICT: {label: Watcher.ConfDictEntry(conf)}})
+                                        METAKEY_CONF_DICT: {label: ValueStatTracker(conf)}})
 
                 def metaCompare(left: dict, right: dict):
                     if left.get(METAKEY_LABEL, "") == right.get(METAKEY_LABEL, ""):
@@ -194,26 +135,26 @@ class Watcher:
                         if key in detectedKeys:
                             objDetIdx = detectedKeys.index(key)
                             detMeta: dict = metadata[objDetIdx]
-                            detConfDict: dict[str, Watcher.ConfDictEntry] = detMeta[METAKEY_CONF_DICT]
-                            objConfDict: dict[str, Watcher.ConfDictEntry] = obj.metadata[METAKEY_CONF_DICT]
+                            detConfDict: dict[str, ValueStatTracker] = detMeta[METAKEY_CONF_DICT]
+                            objConfDict: dict[str, ValueStatTracker] = obj.metadata[METAKEY_CONF_DICT]
 
                             # Add the current detection confidences to the tracked confidences
                             for label, entry in detConfDict.items():
-                                objConfEntry: Watcher.ConfDictEntry = objConfDict.setdefault(
-                                    label, Watcher.ConfDictEntry())
-                                objConfEntry.addConf(entry.avg)
+                                objConfEntry: ValueStatTracker = objConfDict.setdefault(
+                                    label, ValueStatTracker())
+                                objConfEntry.addValue(entry.avg)
 
                             meanConfSum = sum([entry.avg*entry.n for entry in objConfDict.values()])
 
                             # Select best label by comparing bottom of confidence intervals
-                            def calcConf(entry: Watcher.ConfDictEntry, denom=meanConfSum):
+                            def calcConf(entry: ValueStatTracker, denom=meanConfSum):
                                 if entry.n >= NEW_OBJ_MIN_FRAME_CNT:
                                     return entry.sum / denom
                                 else:
                                     return 0
 
                             highConfKey: str = max(objConfDict, key=lambda key, d=objConfDict: calcConf(d[key]))
-                            highConfEntry: Watcher.ConfDictEntry = objConfDict[highConfKey]
+                            highConfEntry: ValueStatTracker = objConfDict[highConfKey]
                             obj.metadata[METAKEY_LABEL] = highConfKey
                             obj.metadata[METAKEY_CONF] = calcConf(highConfEntry)
                             self._objTracker.updateBox(key, metadata=obj.metadata)
