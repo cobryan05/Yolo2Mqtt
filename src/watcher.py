@@ -50,22 +50,30 @@ class Watcher:
 
         runDetectCntdwn = 0
         loopStart = time.time()
+        fetchTimeStats: ValueStatTracker = ValueStatTracker()
+        trackTimeStats: ValueStatTracker = ValueStatTracker()
+        inferTimeStats: ValueStatTracker = ValueStatTracker()
         while True:
             timeElapsed = time.time() - loopStart
             if self._stopEvent.wait(timeout=max(0, self._delay - timeElapsed)):
                 break
             loopStart = time.time()
             try:
+                startTime = time.time()
                 img = self._source.getNextFrame()
+                fetchTimeStats.addValue(time.time() - startTime)
             except Exception as e:
                 print(f"Exception getting image for {self._source}: {str(e)}")
                 continue
 
             # First try object tracking on the new image
+            startTime = time.time()
             trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img)
+            trackTimeStats.addValue(time.time() - startTime)
             runDetectCntdwn -= 1
 
             if runDetectCntdwn <= 0 or len(lostObjs) > 0:
+                startTime = time.time()
                 # If tracking lost an object then run yolo
                 print("Running inference")
                 res = self._model.runInference(img=img)
@@ -161,11 +169,16 @@ class Watcher:
 
                     print(f"{key} - {obj.metadata}")
 
+                inferTimeStats.addValue(time.time() - startTime)
+
             if self._debug:
                 dbgImg = img.copy()
                 for key, tracker in self._objTracker.getTrackedObjects().items():
                     if tracker.metadata[METAKEY_CONF] >= MIN_CONF_THRESH:
                         Watcher.drawTrackerOnImage(dbgImg, tracker)
+                dbgInfo = f"Fetch: {fetchTimeStats.lastValue:0.2}|{fetchTimeStats.avg:0.2}  Track: {trackTimeStats.lastValue:0.2}|{trackTimeStats.avg:0.2}  Infer: {inferTimeStats.lastValue:0.2}|{inferTimeStats.avg:0.2}"
+                cv2.putText(dbgImg, dbgInfo, (0, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1, cv2.LINE_AA)
+
                 cv2.imshow(dbgWin, dbgImg)
                 cv2.waitKey(1)
 

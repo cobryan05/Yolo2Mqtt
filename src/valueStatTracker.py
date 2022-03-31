@@ -4,6 +4,7 @@ import math
 
 class ValueStatTracker:
     def __init__(self, value: float = None):
+        self._lastValue: float = 0.0
         self._sum: float = 0.0
         self._sum_sq: float = 0.0
         self._count: float = 0.0
@@ -18,6 +19,7 @@ class ValueStatTracker:
         return f"{self.avg - self.stdev:.4}|{self.avg:.4}|{self.avg + self.stdev:.4}   Cnt: {self._count}"
 
     def addValue(self, value: float):
+        self._lastValue = value
         self._count += 1
         self._history.append(value)
 
@@ -33,6 +35,10 @@ class ValueStatTracker:
             self._min = value
         if value > self._max:
             self._max = value
+
+    @property
+    def lastValue(self) -> float:
+        return self._lastValue
 
     @property
     def n(self) -> int:
