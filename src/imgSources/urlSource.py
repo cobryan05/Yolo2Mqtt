@@ -1,18 +1,24 @@
 ''' URL-backed image source class '''
 
-from threading import Event
-import urllib.request
-import time
+import requests
+from requests.auth import HTTPBasicAuth
 import cv2
+import io
 import numpy as np
+from PIL import Image
 
 from . source import Source
 
 
 class UrlSource(Source):
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, user: str = None, password: str = None):
         self._url: str = url
+        if user:
+            self._auth: HTTPBasicAuth = HTTPBasicAuth(user, password)
+            requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+        else:
+            self._auth = None
 
     def __repr__(self):
         return f"UrlSource [{self._url}]"
@@ -21,6 +27,9 @@ class UrlSource(Source):
         return self._downloadImage()
 
     def _downloadImage(self):
-        req = urllib.request.urlopen(self._url)
-        buffer = np.array(bytearray(req.read()), dtype=np.uint8)
-        return cv2.imdecode(buffer, flags=cv2.IMREAD_COLOR)
+        resp = requests.get(self._url, verify=False, auth=self._auth)
+        resp.raise_for_status()
+
+        bytesStream = io.BytesIO(resp.content)
+        bytesArray = np.array(Image.open(bytesStream))
+        return cv2.cvtColor(bytesArray, cv2.COLOR_RGB2BGR)

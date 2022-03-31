@@ -20,6 +20,8 @@ from src.imgSources.videoSource import VideoSource
 
 CONFIG_KEY_SNAPSHOT_URL = "snapshot-url"
 CONFIG_KEY_VIDEO_PATH = "video-path"
+CONFIG_KEY_USER = "user"
+CONFIG_KEY_PWD = "password"
 
 
 class CatTracker:
@@ -70,7 +72,9 @@ class CatTracker:
             return VideoSource(cameraConfig[CONFIG_KEY_VIDEO_PATH])
 
         if CONFIG_KEY_SNAPSHOT_URL in cameraConfig:
-            return UrlSource(cameraConfig[CONFIG_KEY_SNAPSHOT_URL])
+            user = cameraConfig.get(CONFIG_KEY_USER, None)
+            pwd = cameraConfig.get(CONFIG_KEY_PWD, None)
+            return UrlSource(cameraConfig[CONFIG_KEY_SNAPSHOT_URL], user=user, password=pwd)
 
         return None
 
