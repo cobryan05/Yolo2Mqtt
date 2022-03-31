@@ -50,6 +50,7 @@ class Watcher:
                 self._avg = conf
             else:
                 prevAvg = self._avg
+                self._sum += conf
                 self._avg += (conf - prevAvg) / self._count
                 self._sum_sq += (conf - prevAvg)*(conf-self._avg)
 
@@ -81,6 +82,10 @@ class Watcher:
         @property
         def stdev(self) -> float:
             return math.sqrt(self.variance)
+
+        @property
+        def sum(self) -> float:
+            return self._sum
 
     def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, debug: bool = False):
         self._source: Source = source
@@ -198,10 +203,12 @@ class Watcher:
                                     label, Watcher.ConfDictEntry())
                                 objConfEntry.addConf(entry.avg)
 
+                            meanConfSum = sum([entry.avg*entry.n for entry in objConfDict.values()])
+
                             # Select best label by comparing bottom of confidence intervals
-                            def calcConf(entry: Watcher.ConfDictEntry):
+                            def calcConf(entry: Watcher.ConfDictEntry, denom=meanConfSum):
                                 if entry.n >= NEW_OBJ_MIN_FRAME_CNT:
-                                    return entry.avg - entry.stdev
+                                    return entry.sum / denom
                                 else:
                                     return 0
 
