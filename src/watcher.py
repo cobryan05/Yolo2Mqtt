@@ -4,6 +4,7 @@ from threading import Event
 import cv2
 import numpy as np
 import math
+import time
 
 from trackerTools.yoloInference import YoloInference
 from trackerTools.bboxTracker import BBoxTracker
@@ -102,11 +103,17 @@ class Watcher:
             dbgWin = None
 
         runDetectCntdwn = 0
+        loopStart = time.time()
         while True:
-            if self._stopEvent.wait(timeout=self._delay):
+            timeElapsed = time.time() - loopStart
+            if self._stopEvent.wait(timeout=max(0, self._delay - timeElapsed)):
                 break
-
-            img = self._source.getNextFrame()
+            loopStart = time.time()
+            try:
+                img = self._source.getNextFrame()
+            except Exception as e:
+                print(f"Exception getting image for {self._source}: {str(e)}")
+                continue
 
             # First try object tracking on the new image
             trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img)
