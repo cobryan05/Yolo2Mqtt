@@ -1,5 +1,7 @@
 ''' Class to track statistics about a series of floats'''
+from __future__ import annotations
 import math
+import copy
 
 
 class ValueStatTracker:
@@ -7,11 +9,10 @@ class ValueStatTracker:
         self._lastValue: float = 0.0
         self._sum: float = 0.0
         self._sum_sq: float = 0.0
-        self._count: float = 0.0
+        self._count: int = 0
         self._min: float = 0.0
         self._max: float = 0.0
         self._avg: float = 0.0
-        self._history: list(float) = []
         if value is not None:
             self.addValue(value)
 
@@ -21,7 +22,6 @@ class ValueStatTracker:
     def addValue(self, value: float):
         self._lastValue = value
         self._count += 1
-        self._history.append(value)
 
         if self._count == 1:
             self._min = value
@@ -35,6 +35,20 @@ class ValueStatTracker:
             self._min = value
         if value > self._max:
             self._max = value
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def merge(self, other: ValueStatTracker) -> ValueStatTracker:
+        ''' Update this tracker by merging in stats from another
+
+        NOTE: Not really implemented, only supports other tracker having one observation
+
+        Parameters:
+        other (ValueStatTracker) - The other stat tracker to integrate
+        '''
+        assert(other.n == 1)  # TODO: Figure out how to merge running standard deviations?
+        self.addValue(other.avg)
 
     @property
     def lastValue(self) -> float:
