@@ -11,12 +11,12 @@ from trackerTools.bboxTracker import BBoxTracker
 from trackerTools.objectTracker import ObjectTracker
 from . imgSources.source import Source
 from . valueStatTracker import ValueStatTracker
+from . watchedObject import WatchedObject
 
-METAKEY_LOST_FRAMES = "losttime"
-METAKEY_LABEL = "label"
-METAKEY_CONF = "conf"
-METAKEY_CONF_DICT = "confdict"
-METAKEY_FRAME_CNT = "frameCnt"
+METAKEY_DET_LABEL = "detLabel"
+METAKEY_DET_CONF = "detConf"
+
+METAKEY_WATCHED_OBJ = "watchedObject"
 
 
 LOST_OBJ_REMOVE_FRAME_CNT = 20  # How long must an object be lost before removed
@@ -94,19 +94,17 @@ class Watcher:
                     # Merge any duplicate boxes into one
                     if dupIdx != -1:
                         metadatum = metadata[dupIdx]
-                        metadatum[METAKEY_CONF_DICT][label] = ValueStatTracker(conf)
                         # Label the detection as the higher confidence label
-                        if conf > metadatum[METAKEY_CONF]:
-                            metadatum[METAKEY_CONF] = conf
-                            metadatum[METAKEY_LABEL] = label
+                        if conf > metadatum[METAKEY_DET_CONF]:
+                            metadatum[METAKEY_DET_CONF] = conf
+                            metadatum[METAKEY_DET_LABEL] = label
                     else:
                         detections.append(bbox)
-                        metadata.append({METAKEY_LABEL: label,
-                                        METAKEY_CONF: conf,
-                                        METAKEY_CONF_DICT: {label: ValueStatTracker(conf)}})
+                        metadata.append({METAKEY_DET_LABEL: label,
+                                        METAKEY_DET_CONF: conf})
 
                 def metaCompare(left: dict, right: dict):
-                    if left.get(METAKEY_LABEL, "") == right.get(METAKEY_LABEL, ""):
+                    if left.get(METAKEY_DET_LABEL, "") == right.get(METAKEY_DET_LABEL, ""):
                         return 1.0
                     return 0.5
 
@@ -115,57 +113,26 @@ class Watcher:
 
                 # Process each tracked item
                 for key, obj in trackedObjs.items():
-
+                    watchedObj: WatchedObject = obj.metadata.get(METAKEY_WATCHED_OBJ, None)
+                    detLabel: str = obj.metadata.get(METAKEY_DET_LABEL)
+                    detConf: float = obj.metadata.get(METAKEY_DET_CONF)
                     if key in newObjs:
-                        # Initialize new object metadata
-                        obj.metadata[METAKEY_FRAME_CNT] = 0
-                        obj.metadata[METAKEY_LOST_FRAMES] = 0
+                        assert(watchedObj is None)
+                        obj.metadata[METAKEY_WATCHED_OBJ] = WatchedObject(detLabel, detConf)
                         self._objTracker.updateBox(key, metadata=obj.metadata)
                     elif key in lostObjs:
                         # If it was lost before reaching the minimum frame count then remove it
-                        if obj.metadata[METAKEY_FRAME_CNT] < NEW_OBJ_MIN_FRAME_CNT:
-                            print(f"{obj.metadata[METAKEY_LABEL]} lost before minimum frame count")
+                        if watchedObj.age < NEW_OBJ_MIN_FRAME_CNT:
+                            print(f"{watchedObj.label} lost before minimum frame count")
                             self._objTracker.removeBox(key)
                         else:
-                            lostFrames = obj.metadata[METAKEY_LOST_FRAMES] + 1
-                            obj.metadata[METAKEY_LOST_FRAMES] = lostFrames
-                            self._objTracker.updateBox(key, metadata=obj.metadata)
-
-                            if lostFrames > LOST_OBJ_REMOVE_FRAME_CNT:
-                                print(f"{obj.metadata[METAKEY_LABEL]} lost for {lostFrames}, removing.")
+                            watchedObj.markMissing()
+                            if watchedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
+                                print(f"{watchedObj.label} lost for {watchedObj.framesSinceSeen}, removing")
                                 self._objTracker.removeBox(key)
                     else:
                         # A previously tracked object, ensure it isn't marked as lost
-                        obj.metadata[METAKEY_LOST_FRAMES] = 0
-                        obj.metadata[METAKEY_FRAME_CNT] += 1
-
-                        # Update the object if it was present in our most recent detection
-                        if key in detectedKeys:
-                            objDetIdx = detectedKeys.index(key)
-                            detMeta: dict = metadata[objDetIdx]
-                            detConfDict: dict[str, ValueStatTracker] = detMeta[METAKEY_CONF_DICT]
-                            objConfDict: dict[str, ValueStatTracker] = obj.metadata[METAKEY_CONF_DICT]
-
-                            # Add the current detection confidences to the tracked confidences
-                            for label, entry in detConfDict.items():
-                                objConfEntry: ValueStatTracker = objConfDict.setdefault(
-                                    label, ValueStatTracker())
-                                objConfEntry.addValue(entry.avg)
-
-                            meanConfSum = sum([entry.avg*entry.n for entry in objConfDict.values()])
-
-                            # Select best label by comparing bottom of confidence intervals
-                            def calcConf(entry: ValueStatTracker, denom=meanConfSum):
-                                if entry.n >= NEW_OBJ_MIN_FRAME_CNT:
-                                    return entry.sum / denom
-                                else:
-                                    return 0
-
-                            highConfKey: str = max(objConfDict, key=lambda key, d=objConfDict: calcConf(d[key]))
-                            highConfEntry: ValueStatTracker = objConfDict[highConfKey]
-                            obj.metadata[METAKEY_LABEL] = highConfKey
-                            obj.metadata[METAKEY_CONF] = calcConf(highConfEntry)
-                            self._objTracker.updateBox(key, metadata=obj.metadata)
+                        watchedObj.markSeen(detLabel, detConf)
 
                     print(f"{key} - {obj.metadata}")
 
@@ -174,7 +141,9 @@ class Watcher:
             if self._debug:
                 dbgImg = img.copy()
                 for key, tracker in self._objTracker.getTrackedObjects().items():
-                    if tracker.metadata[METAKEY_CONF] >= MIN_CONF_THRESH:
+                    watchedObj: WatchedObject = tracker.metadata[METAKEY_WATCHED_OBJ]
+
+                    if watchedObj.conf >= MIN_CONF_THRESH:
                         Watcher.drawTrackerOnImage(dbgImg, tracker)
                 dbgInfo = f"Fetch: {fetchTimeStats.lastValue:0.2}|{fetchTimeStats.avg:0.2}  Track: {trackTimeStats.lastValue:0.2}|{trackTimeStats.avg:0.2}  Infer: {inferTimeStats.lastValue:0.2}|{inferTimeStats.avg:0.2}"
                 cv2.putText(dbgImg, dbgInfo, (0, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1, cv2.LINE_AA)
@@ -186,27 +155,27 @@ class Watcher:
 
         print("Exit")
 
-    @staticmethod
+    @ staticmethod
     def drawTrackerOnImage(img: np.array, tracker: BBoxTracker.Tracker, color: tuple[int, int, int] = (255, 255, 255)):
-        frameCnt = tracker.metadata[METAKEY_FRAME_CNT]
-        if frameCnt < NEW_OBJ_MIN_FRAME_CNT:
-            brightness = 255 * (1-(NEW_OBJ_MIN_FRAME_CNT - frameCnt)/NEW_OBJ_MIN_FRAME_CNT)
+        watchedObj: WatchedObject = tracker.metadata[METAKEY_WATCHED_OBJ]
+
+        if watchedObj.age < NEW_OBJ_MIN_FRAME_CNT:
+            brightness = 255 * (1-(NEW_OBJ_MIN_FRAME_CNT - watchedObj.age)/NEW_OBJ_MIN_FRAME_CNT)
             color = 3*(brightness,)
 
-        lostFrames = tracker.metadata[METAKEY_LOST_FRAMES]
-        if lostFrames > 0:
-            red = 255 * (LOST_OBJ_REMOVE_FRAME_CNT - lostFrames)/LOST_OBJ_REMOVE_FRAME_CNT
+        if watchedObj.framesSinceSeen > 0:
+            red = 255 * (LOST_OBJ_REMOVE_FRAME_CNT - watchedObj.framesSinceSeen)/LOST_OBJ_REMOVE_FRAME_CNT
             color = (0, 0, red)
 
         imgY, imgX = img.shape[:2]
         x1, y1, x2, y2 = tracker.bbox.asX1Y1X2Y2(imgX, imgY)
         cv2.rectangle(img, (x1, y1), (x2, y2), color)
 
-        objClass = tracker.metadata.get(METAKEY_LABEL, "")
-        objConf = tracker.metadata.get(METAKEY_CONF, 0.0)
+        objClass = tracker.metadata.get(METAKEY_DET_LABEL, "")
+        objConf = tracker.metadata.get(METAKEY_DET_CONF, 0.0)
 
         font = cv2.FONT_HERSHEY_SIMPLEX
         label = f"{tracker.key} - {objClass} {objConf:0.2}"
-        if lostFrames > 0:
-            label += f" [missing {lostFrames}]"
+        if watchedObj.framesSinceSeen > 0:
+            label += f" [missing {watchedObj.framesSinceSeen}]"
         cv2.putText(img, label, (x1, y1 + 16), font, 0.4, color, 1, cv2.LINE_AA)
