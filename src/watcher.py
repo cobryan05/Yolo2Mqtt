@@ -51,6 +51,7 @@ class Watcher:
             dbgWin = None
 
         runDetectCntdwn = 0
+        frameCnt: int = 0
         loopStart = time.time()
         fetchTimeStats: ValueStatTracker = ValueStatTracker()
         trackTimeStats: ValueStatTracker = ValueStatTracker()
@@ -160,7 +161,7 @@ class Watcher:
                 if yoloRes:
                     for bbox, conf, classIdx, label in yoloRes:
                         Watcher.drawBboxOnImage(dbgImg, bbox, color=(0, 255, 0), thickness=2)
-                        Watcher.drawBboxLabel(dbgImg, bbox, f"{label}: {conf:0.2}", color=(0, 255, 0), line=1)
+                        Watcher.drawBboxLabel(dbgImg, bbox, f"{label}: {conf:0.2}", color=(0, 255, 0), align=7)
                 for key, tracker in self._objTracker.getTrackedObjects().items():
                     trackedObj: WatchedObject = tracker.metadata[METAKEY_TRACKED_WATCHED_OBJ]
 
@@ -172,7 +173,8 @@ class Watcher:
                 cv2.imshow(dbgWin, dbgImg)
                 cv2.waitKey(1)
 
-            print("------")
+            print(f"---End of frame {frameCnt}---")
+            frameCnt += 1
 
         print("Exit")
 
@@ -209,7 +211,12 @@ class Watcher:
                       color: tuple[int, int, int] = (255, 255, 255),
                       line: int = 0,
                       font: int = cv2.FONT_HERSHEY_SIMPLEX,
-                      size: float = 0.4):
+                      size: float = 0.4,
+                      align: int = 0):
         imgY, imgX = img.shape[:2]
         x1, y1, x2, y2 = bbox.asX1Y1X2Y2(imgX, imgY)
-        cv2.putText(img, label, (x1, y1 + (1+line)*16), font, size, color, 1, cv2.LINE_AA)
+        if align == 7:
+            yPos = y2 - line*16
+        else:
+            yPos = y1 + (1+line)*16
+        cv2.putText(img, label, (x1, yPos), font, size, color, 1, cv2.LINE_AA)
