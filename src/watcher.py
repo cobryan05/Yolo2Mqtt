@@ -93,15 +93,15 @@ class Watcher:
                 for bbox, conf, objClass, label in yoloRes:
 
                     # Check if this may be a second detection of the same object
-                    dupIdxs = []
+                    dupIdx = -1
                     for idx, prevDet in enumerate(detections):
                         if bbox.similar(prevDet, SAME_BOX_DIST_THRESH, SAME_BOX_SIZE_THRESH):
-                            dupIdxs.append(idx)
+                            dupIdx = idx
+                            break
 
                     # Merge any duplicate boxes into one
-                    if len(dupIdxs) > 0:
-                        for idx in dupIdxs:
-                            metadata[idx][METAKEY_DETECTIONS].append(WatchedObject.Detection(label, conf))
+                    if dupIdx != -1:
+                        metadata[dupIdx][METAKEY_DETECTIONS].append(WatchedObject.Detection(label, conf))
                     else:
                         detections.append(bbox)
                         metadata.append({METAKEY_DETECTIONS: [WatchedObject.Detection(label, conf)]})
