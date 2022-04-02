@@ -75,20 +75,21 @@ class Watcher:
             trackTimeStats.addValue(time.time() - startTime)
             runDetectCntdwn -= 1
 
+            yoloRes = None
             if forceInference or runDetectCntdwn <= 0 or len(lostObjs) > 0:
                 forceInference = False
 
                 startTime = time.time()
                 # If tracking lost an object then run yolo
                 print("Running inference")
-                res = self._model.runInference(img=img)
+                yoloRes = self._model.runInference(img=img)
                 runDetectCntdwn = MAX_DETECT_INTERVAL
 
                 detections: list(BBox) = []
                 metadata: list(WatchedObject.Detection) = []
                 SAME_BOX_DIST_THRESH = 0.1
                 SAME_BOX_SIZE_THRESH = 0.9
-                for bbox, conf, objClass, label in res:
+                for bbox, conf, objClass, label in yoloRes:
 
                     # Check if this may be a second detection of the same object
                     dupIdxs = []
@@ -156,6 +157,10 @@ class Watcher:
 
             if self._debug:
                 dbgImg = img.copy()
+                if yoloRes:
+                    for bbox, conf, classIdx, label in yoloRes:
+                        Watcher.drawBboxOnImage(dbgImg, bbox, color=(0, 255, 0), thickness=2)
+                        Watcher.drawBboxLabel(dbgImg, bbox, f"{label}: {conf:0.2}", color=(0, 255, 0), line=1)
                 for key, tracker in self._objTracker.getTrackedObjects().items():
                     trackedObj: WatchedObject = tracker.metadata[METAKEY_TRACKED_WATCHED_OBJ]
 
@@ -183,12 +188,26 @@ class Watcher:
             red = 255 * (LOST_OBJ_REMOVE_FRAME_CNT - watchedObj.framesSinceSeen)/LOST_OBJ_REMOVE_FRAME_CNT
             color = (0, 0, red)
 
-        imgY, imgX = img.shape[:2]
-        x1, y1, x2, y2 = tracker.bbox.asX1Y1X2Y2(imgX, imgY)
-        cv2.rectangle(img, (x1, y1), (x2, y2), color)
-
-        font = cv2.FONT_HERSHEY_SIMPLEX
         label = f"{tracker.key} - {watchedObj.label} {watchedObj.conf:0.2}"
         if watchedObj.framesSinceSeen > 0:
             label += f" [missing {watchedObj.framesSinceSeen}|{watchedObj.age}]"
-        cv2.putText(img, label, (x1, y1 + 16), font, 0.4, color, 1, cv2.LINE_AA)
+        Watcher.drawBboxOnImage(img, tracker.bbox, color=color)
+        Watcher.drawBboxLabel(img, tracker.bbox, label, color=color)
+
+    @ staticmethod
+    def drawBboxOnImage(img: np.array, bbox: BBox, color: tuple[int, int, int] = (255, 255, 255), thickness=1):
+        imgY, imgX = img.shape[:2]
+        x1, y1, x2, y2 = bbox.asX1Y1X2Y2(imgX, imgY)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness=thickness)
+
+    @ staticmethod
+    def drawBboxLabel(img: np.array,
+                      bbox: BBox,
+                      label: str,
+                      color: tuple[int, int, int] = (255, 255, 255),
+                      line: int = 0,
+                      font: int = cv2.FONT_HERSHEY_SIMPLEX,
+                      size: float = 0.4):
+        imgY, imgX = img.shape[:2]
+        x1, y1, x2, y2 = bbox.asX1Y1X2Y2(imgX, imgY)
+        cv2.putText(img, label, (x1, y1 + (1+line)*16), font, size, color, 1, cv2.LINE_AA)
