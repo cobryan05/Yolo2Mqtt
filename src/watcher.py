@@ -7,6 +7,7 @@ import math
 import time
 
 from trackerTools.yoloInference import YoloInference
+from trackerTools.bbox import BBox
 from trackerTools.bboxTracker import BBoxTracker
 from trackerTools.objectTracker import ObjectTracker
 from . imgSources.source import Source
@@ -17,7 +18,7 @@ METAKEY_DET_LABEL = "detLabel"
 METAKEY_DET_CONF = "detConf"
 
 METAKEY_TRACKED_WATCHED_OBJ = "trackedWatchedObj"
-METAKEY_DETECTION_WATCHED_OBJ = "detWatchedObj"
+METAKEY_DETECTIONS = "detections"
 
 
 LOST_OBJ_REMOVE_FRAME_CNT = 20  # How long must an object be lost before removed
@@ -83,8 +84,8 @@ class Watcher:
                 res = self._model.runInference(img=img)
                 runDetectCntdwn = MAX_DETECT_INTERVAL
 
-                detections = []
-                metadata = []
+                detections: list(BBox) = []
+                metadata: list(WatchedObject.Detection) = []
                 SAME_BOX_THRESH = 0.01
                 for bbox, conf, objClass, label in res:
 
@@ -97,13 +98,10 @@ class Watcher:
 
                     # Merge any duplicate boxes into one
                     if dupIdx != -1:
-                        dupObj = metadata[dupIdx][METAKEY_DETECTION_WATCHED_OBJ]
-                        dupObj.markSeen(WatchedObject.Detection(label, conf), newFrame=False)
+                        metadata[dupIdx][METAKEY_DETECTIONS].append(WatchedObject.Detection(label, conf))
                     else:
                         detections.append(bbox)
-                        metadata.append({METAKEY_DETECTION_WATCHED_OBJ: WatchedObject(
-                            initialDetection=WatchedObject.Detection(label, conf)
-                        )})
+                        metadata.append({METAKEY_DETECTIONS: [WatchedObject.Detection(label, conf)]})
 
                 def metaCompare(left: dict, right: dict):
                     if left.get(METAKEY_DET_LABEL, "") == right.get(METAKEY_DET_LABEL, ""):
@@ -118,13 +116,18 @@ class Watcher:
                     trackedObj: WatchedObject = obj.metadata.get(METAKEY_TRACKED_WATCHED_OBJ, None)
 
                     # Pop any detection info off that may be on the tracked object
-                    detObj: WatchedObject = obj.metadata.pop(METAKEY_DETECTION_WATCHED_OBJ, None)
-                    if detObj:
+                    detections: list(WatchedObject.Detection) = obj.metadata.pop(METAKEY_DETECTIONS, [])
+                    if len(detections) > 0:
+                        # Update objTracker with the 'detections removed' metadata
                         self._objTracker.updateBox(key, metadata=obj.metadata)
 
                     if key in newObjs:
                         assert(trackedObj is None)
-                        obj.metadata[METAKEY_TRACKED_WATCHED_OBJ] = detObj
+                        trackedObj: WatchedObject = WatchedObject()
+                        for detection in detections:
+                            trackedObj.markSeen(detection, newFrame=False)
+
+                        obj.metadata[METAKEY_TRACKED_WATCHED_OBJ] = trackedObj
                         self._objTracker.updateBox(key, metadata=obj.metadata)
                     elif key in lostObjs:
                         # If it was lost before reaching the minimum frame count then remove it
@@ -137,9 +140,9 @@ class Watcher:
                                 print(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing")
                                 self._objTracker.removeBox(key)
                     else:
-                        # A previously tracked object, ensure it isn't marked as lost and add any new detection
-                        if detObj:
-                            trackedObj.extend(detObj)
+                        # A previously tracked object, ensure it isn't marked as lost and add any new detections
+                        for detection in detections:
+                            trackedObj.markSeen(detection, newFrame=False)
                         trackedObj.markSeen()
 
                         # Run inference every frame when there is a new object

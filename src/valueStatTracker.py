@@ -37,18 +37,7 @@ class ValueStatTracker:
             self._max = value
 
     def copy(self):
-        return copy.deepcopy(self)
-
-    def merge(self, other: ValueStatTracker) -> ValueStatTracker:
-        ''' Update this tracker by merging in stats from another
-
-        NOTE: Not really implemented, only supports other tracker having one observation
-
-        Parameters:
-        other (ValueStatTracker) - The other stat tracker to integrate
-        '''
-        assert(other.n == 1)  # TODO: Figure out how to merge running standard deviations?
-        self.addValue(other.avg)
+        return copy.copy(self)
 
     @property
     def lastValue(self) -> float:

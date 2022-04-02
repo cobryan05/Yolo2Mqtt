@@ -36,19 +36,6 @@ class WatchedObject:
         ''' Mark that this object was missing for a frame '''
         self._framesSinceSeen += 1
 
-    def extend(self, other: WatchedObject):
-        ''' Adds the observations data from another WatchedObject to this one
-
-        Parameters:
-        other (WatchedObject) - the object to add to the current object
-        '''
-        for key, statTracker in other._confDict.items():
-            if key in self._confDict:
-                self._confDict[key].merge(statTracker)
-            else:
-                self._confDict[key] = statTracker.copy()
-        self._recalculateBest()
-
     def markSeen(self, detection: WatchedObject.Detection = None, newFrame: bool = True):
         ''' Mark that this object was seen with a given label and confidence
 
