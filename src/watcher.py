@@ -86,13 +86,14 @@ class Watcher:
 
                 detections: list(BBox) = []
                 metadata: list(WatchedObject.Detection) = []
-                SAME_BOX_THRESH = 0.01
+                SAME_BOX_DIST_THRESH = 0.1
+                SAME_BOX_SIZE_THRESH = 0.9
                 for bbox, conf, objClass, label in res:
 
                     # Check if this may be a second detection of the same object
                     dupIdx = -1
                     for idx, prevDet in enumerate(detections):
-                        if bbox.similar(prevDet, SAME_BOX_THRESH):
+                        if bbox.similar(prevDet, SAME_BOX_DIST_THRESH, SAME_BOX_SIZE_THRESH):
                             dupIdx = idx
                             break
 
@@ -189,5 +190,5 @@ class Watcher:
         font = cv2.FONT_HERSHEY_SIMPLEX
         label = f"{tracker.key} - {watchedObj.label} {watchedObj.conf:0.2}"
         if watchedObj.framesSinceSeen > 0:
-            label += f" [missing {watchedObj.framesSinceSeen}]"
+            label += f" [missing {watchedObj.framesSinceSeen}|{watchedObj.age}]"
         cv2.putText(img, label, (x1, y1 + 16), font, 0.4, color, 1, cv2.LINE_AA)
