@@ -14,9 +14,6 @@ from . imgSources.source import Source
 from . valueStatTracker import ValueStatTracker
 from . watchedObject import WatchedObject
 
-METAKEY_DET_LABEL = "detLabel"
-METAKEY_DET_CONF = "detConf"
-
 METAKEY_TRACKED_WATCHED_OBJ = "trackedWatchedObj"
 METAKEY_DETECTIONS = "detections"
 
@@ -88,7 +85,7 @@ class Watcher:
 
                 detections: list(BBox) = []
                 metadata: list(WatchedObject.Detection) = []
-                SAME_BOX_DIST_THRESH = 0.1
+                SAME_BOX_DIST_THRESH = 0.03
                 SAME_BOX_SIZE_THRESH = 0.9
                 for bbox, conf, objClass, label in yoloRes:
 
@@ -106,10 +103,17 @@ class Watcher:
                         detections.append(bbox)
                         metadata.append({METAKEY_DETECTIONS: [WatchedObject.Detection(label, conf)]})
 
-                def metaCompare(left: dict, right: dict):
-                    if left.get(METAKEY_DET_LABEL, "") == right.get(METAKEY_DET_LABEL, ""):
-                        return 1.0
-                    return 0.5
+                def metaCompare(trackedDetection: dict, newDetection: dict):
+                    assert(METAKEY_DETECTIONS in newDetection)
+                    assert(METAKEY_TRACKED_WATCHED_OBJ in trackedDetection)
+
+                    newDetections: list(WatchedObject.Detection) = newDetection[METAKEY_DETECTIONS]
+                    trackedObj: WatchedObject = trackedDetection[METAKEY_TRACKED_WATCHED_OBJ]
+
+                    bestLabelConf: float = 0.0
+                    for detection in newDetections:
+                        bestLabelConf = max(trackedObj.labelConf(detection.label), bestLabelConf)
+                    return bestLabelConf
 
                 trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img, detections=detections,
                                                                                        metadata=metadata, metadataComp=metaCompare, mergeMetadata=True)
@@ -195,8 +199,8 @@ class Watcher:
             label += f" [missing {watchedObj.framesSinceSeen}|{watchedObj.age}]"
         Watcher.drawBboxOnImage(img, tracker.bbox, color=color)
         Watcher.drawBboxLabel(img, tracker.bbox, label, color=color)
-        for idx, (key, statTracker) in enumerate(watchedObj._confDict.items()):
-            Watcher.drawBboxLabel(img, tracker.bbox, f"{key}: {statTracker}", color=color, line=idx+1, size=0.3)
+        for idx, (key, entry) in enumerate(watchedObj._confDict.items()):
+            Watcher.drawBboxLabel(img, tracker.bbox, f"{key}: {entry.tracker}", color=color, line=idx+1, size=0.3)
 
     @ staticmethod
     def drawBboxOnImage(img: np.array, bbox: BBox, color: tuple[int, int, int] = (255, 255, 255), thickness=1):

@@ -1,29 +1,25 @@
 ''' Class of an object watched by Watcher '''
 from __future__ import annotations
+from dataclasses import dataclass
 from . valueStatTracker import ValueStatTracker
 
 
 class WatchedObject:
+    @dataclass
     class Detection:
-        def __init__(self, label: str, conf: float):
-            self._label: str = label
-            self._conf: float = conf
+        label: str
+        conf: float
 
-        @property
-        def label(self) -> str:
-            ''' The label associated with this detection '''
-            return self._label
-
-        @property
-        def conf(self) -> float:
-            ''' The confidence of this detection '''
-            return self._conf
+    @dataclass
+    class _ConfDictEntry:
+        tracker: ValueStatTracker
+        conf: float
 
     def __init__(self, initialDetection: WatchedObject.Detection = None):
         self._framesCnt: int = 0
         self._framesSeen: int = 0
         self._framesSinceSeen: int = 0
-        self._confDict: dict(ValueStatTracker) = {}
+        self._confDict: dict(str, WatchedObject._ConfDictEntry) = {}
         self._bestLabel: str = ""
         self._bestConf: float = 0.0
         if initialDetection is not None:
@@ -47,7 +43,11 @@ class WatchedObject:
         if newFrame:
             self._framesCnt += 1
         if detection is not None:
-            self._confDict.setdefault(detection.label, ValueStatTracker()).addValue(detection.conf)
+            detectionEntry = self._confDict.setdefault(detection.label, None)
+            if detectionEntry is None:
+                detectionEntry = WatchedObject._ConfDictEntry(ValueStatTracker(), None)
+            detectionEntry.tracker.addValue(detection.conf)
+            self._confDict[detection.label] = detectionEntry
             self._recalculateBest()
 
     def _recalculateBest(self):
@@ -57,18 +57,25 @@ class WatchedObject:
         bestTracker = None
 
         # Determine confidence this is the best label among tracked labels
-        meanConfSum = sum([tracker.avg*tracker.n for tracker in self._confDict.values()])
-        for key, tracker in self._confDict.items():
-            conf = tracker.sum / meanConfSum
-            if conf > bestConf:
-                bestConf = conf
+        meanConfSum = sum([entry.tracker.avg*entry.tracker.n for entry in self._confDict.values()])
+        for key, entry in self._confDict.items():
+            entry.conf = entry.tracker.sum / meanConfSum
+            if entry.conf > bestConf:
+                bestConf = entry.conf
                 bestLabel = key
-                bestTracker = tracker
+                bestTracker = entry.tracker
 
         # Now get overall confidence by multiplying the confidence that this
         # is the best label by the confidence of that label
         self._bestLabel = bestLabel
         self._bestConf = bestTracker.avg * bestConf
+
+    def labelConf(self, label) -> float:
+        ''' Check confidence of a given label '''
+        entry = self._confDict.get(label, None)
+        if entry is not None:
+            return entry.conf
+        return 0.0
 
     @property
     def age(self) -> int:
