@@ -193,6 +193,8 @@ class Watcher:
             label += f" [missing {watchedObj.framesSinceSeen}|{watchedObj.age}]"
         Watcher.drawBboxOnImage(img, tracker.bbox, color=color)
         Watcher.drawBboxLabel(img, tracker.bbox, label, color=color)
+        for idx, (key, statTracker) in enumerate(watchedObj._confDict.items()):
+            Watcher.drawBboxLabel(img, tracker.bbox, f"{key}: {statTracker}", color=color, line=idx+1, size=0.3)
 
     @ staticmethod
     def drawBboxOnImage(img: np.array, bbox: BBox, color: tuple[int, int, int] = (255, 255, 255), thickness=1):
