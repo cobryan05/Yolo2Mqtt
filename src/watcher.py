@@ -188,7 +188,7 @@ class Watcher:
 
         if watchedObj.age < NEW_OBJ_MIN_FRAME_CNT:
             brightness = 255 * (1-(NEW_OBJ_MIN_FRAME_CNT - watchedObj.age)/NEW_OBJ_MIN_FRAME_CNT)
-            color = 3*(brightness,)
+            color = (0, brightness, 0)
 
         if watchedObj.framesSinceSeen > 0:
             red = 255 * (LOST_OBJ_REMOVE_FRAME_CNT - watchedObj.framesSinceSeen)/LOST_OBJ_REMOVE_FRAME_CNT
