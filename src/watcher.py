@@ -111,16 +111,21 @@ class Watcher:
                         detBboxes.append(bbox)
                         metadata.append({METAKEY_DETECTIONS: [detectInfo]})
 
-                def metaCompare(trackedDetection: dict, newDetection: dict):
-                    assert(METAKEY_DETECTIONS in newDetection)
-                    assert(METAKEY_TRACKED_WATCHED_OBJ in trackedDetection)
+                def metaCompare(trackedInfo: tuple[BBox, dict], detectedInfo: tuple[BBox, dict]) -> float:
+                    trackedBbox, trackedMeta = trackedInfo
+                    detectedBbox, detectMeta = detectedInfo
+                    assert(METAKEY_DETECTIONS in detectMeta)
+                    assert(METAKEY_TRACKED_WATCHED_OBJ in trackedMeta)
 
-                    newDetInfos: list[Watcher._DetectionInfo] = newDetection[METAKEY_DETECTIONS]
-                    trackedObj: WatchedObject = trackedDetection[METAKEY_TRACKED_WATCHED_OBJ]
+                    newDetInfos: list[Watcher._DetectionInfo] = detectMeta[METAKEY_DETECTIONS]
+                    trackedObj: WatchedObject = trackedMeta[METAKEY_TRACKED_WATCHED_OBJ]
 
                     bestLabelConf: float = 0.0
                     for detInfo in newDetInfos:
                         bestLabelConf = max(trackedObj.labelConf(detInfo.detection.label), bestLabelConf)
+
+                    if not trackedBbox.similar(detectedBbox):
+                        bestLabelConf *= 0.5
                     return bestLabelConf
 
                 trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img, detections=detBboxes,
