@@ -1,5 +1,6 @@
 ''' Class to watch for objects in an image stream '''
 
+from dataclasses import dataclass
 from threading import Event
 import cv2
 import numpy as np
@@ -26,6 +27,10 @@ MIN_CONF_THRESH = 0.1  # Minimum confidence threshold for display
 
 
 class Watcher:
+    @dataclass
+    class _DetectionInfo:
+        detection: WatchedObject.Detection
+        bbox: BBox
 
     def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, debug: bool = False):
         self._source: Source = source
@@ -83,39 +88,42 @@ class Watcher:
                 yoloRes = self._model.runInference(img=img)
                 runDetectCntdwn = MAX_DETECT_INTERVAL
 
-                detections: list[BBox] = []
+                detBboxes: list[BBox] = []
                 metadata: list[WatchedObject.Detection] = []
                 SAME_BOX_DIST_THRESH = 0.03
                 SAME_BOX_SIZE_THRESH = 0.9
                 for bbox, conf, objClass, label in yoloRes:
+                    detectInfo = Watcher._DetectionInfo(bbox=bbox, detection=WatchedObject.Detection(label, conf))
 
                     # Check if this may be a second detection of the same object
                     dupIdx = -1
-                    for idx, prevDet in enumerate(detections):
-                        if bbox.similar(prevDet, SAME_BOX_DIST_THRESH, SAME_BOX_SIZE_THRESH):
+                    for idx, prevDet in enumerate(detBboxes):
+                        if detectInfo.bbox.similar(prevDet, SAME_BOX_DIST_THRESH, SAME_BOX_SIZE_THRESH):
                             dupIdx = idx
                             break
 
                     # Merge any duplicate boxes into one
                     if dupIdx != -1:
-                        metadata[dupIdx][METAKEY_DETECTIONS].append(WatchedObject.Detection(label, conf))
+                        # Add this detection to the original detection list
+                        metadata[dupIdx][METAKEY_DETECTIONS].append(detectInfo)
                     else:
-                        detections.append(bbox)
-                        metadata.append({METAKEY_DETECTIONS: [WatchedObject.Detection(label, conf)]})
+                        # Add new detection
+                        detBboxes.append(bbox)
+                        metadata.append({METAKEY_DETECTIONS: [detectInfo]})
 
                 def metaCompare(trackedDetection: dict, newDetection: dict):
                     assert(METAKEY_DETECTIONS in newDetection)
                     assert(METAKEY_TRACKED_WATCHED_OBJ in trackedDetection)
 
-                    newDetections: list[WatchedObject.Detection] = newDetection[METAKEY_DETECTIONS]
+                    newDetInfos: list[Watcher._DetectionInfo] = newDetection[METAKEY_DETECTIONS]
                     trackedObj: WatchedObject = trackedDetection[METAKEY_TRACKED_WATCHED_OBJ]
 
                     bestLabelConf: float = 0.0
-                    for detection in newDetections:
-                        bestLabelConf = max(trackedObj.labelConf(detection.label), bestLabelConf)
+                    for detInfo in newDetInfos:
+                        bestLabelConf = max(trackedObj.labelConf(detInfo.detection.label), bestLabelConf)
                     return bestLabelConf
 
-                trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img, detections=detections,
+                trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img, detections=detBboxes,
                                                                                        metadata=metadata, metadataComp=metaCompare, mergeMetadata=True)
 
                 # Process each tracked item
@@ -123,16 +131,16 @@ class Watcher:
                     trackedObj: WatchedObject = obj.metadata.get(METAKEY_TRACKED_WATCHED_OBJ, None)
 
                     # Pop any detection info off that may be on the tracked object
-                    detections: list[WatchedObject.Detection] = obj.metadata.pop(METAKEY_DETECTIONS, [])
-                    if len(detections) > 0:
+                    detBboxes: list[Watcher._DetectionInfo] = obj.metadata.pop(METAKEY_DETECTIONS, [])
+                    if len(detBboxes) > 0:
                         # Update objTracker with the 'detections removed' metadata
                         self._objTracker.updateBox(key, metadata=obj.metadata)
 
                     if key in newObjs:
                         assert(trackedObj is None)
                         trackedObj: WatchedObject = WatchedObject()
-                        for detection in detections:
-                            trackedObj.markSeen(detection, newFrame=False)
+                        for detectInfo in detBboxes:
+                            trackedObj.markSeen(detectInfo.detection, newFrame=False)
 
                         obj.metadata[METAKEY_TRACKED_WATCHED_OBJ] = trackedObj
                         self._objTracker.updateBox(key, metadata=obj.metadata)
@@ -148,8 +156,8 @@ class Watcher:
                                 self._objTracker.removeBox(key)
                     else:
                         # A previously tracked object, ensure it isn't marked as lost and add any new detections
-                        for detection in detections:
-                            trackedObj.markSeen(detection, newFrame=False)
+                        for detectInfo in detBboxes:
+                            trackedObj.markSeen(detectInfo.detection, newFrame=False)
                         trackedObj.markSeen()
 
                         # Run inference every frame when there is a new object
