@@ -36,7 +36,8 @@ class WatchedObject:
         ''' Mark that this object was seen with a given label and confidence
 
         Parameters:
-        detection (WatchedObject.Detection, optional) - new detection confidence information, if any
+        detection (WatchedObject.Detection, optional) - new detection confidence information, if any.
+                  This may be None if no detection (eg, only tracking) was performed.
         newFrame( bool, optional) - Set to false if this label is an additional label on the same frame
         '''
         self._framesSinceSeen = 0
