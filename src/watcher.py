@@ -83,8 +83,8 @@ class Watcher:
                 yoloRes = self._model.runInference(img=img)
                 runDetectCntdwn = MAX_DETECT_INTERVAL
 
-                detections: list(BBox) = []
-                metadata: list(WatchedObject.Detection) = []
+                detections: list[BBox] = []
+                metadata: list[WatchedObject.Detection] = []
                 SAME_BOX_DIST_THRESH = 0.03
                 SAME_BOX_SIZE_THRESH = 0.9
                 for bbox, conf, objClass, label in yoloRes:
@@ -107,7 +107,7 @@ class Watcher:
                     assert(METAKEY_DETECTIONS in newDetection)
                     assert(METAKEY_TRACKED_WATCHED_OBJ in trackedDetection)
 
-                    newDetections: list(WatchedObject.Detection) = newDetection[METAKEY_DETECTIONS]
+                    newDetections: list[WatchedObject.Detection] = newDetection[METAKEY_DETECTIONS]
                     trackedObj: WatchedObject = trackedDetection[METAKEY_TRACKED_WATCHED_OBJ]
 
                     bestLabelConf: float = 0.0
@@ -123,7 +123,7 @@ class Watcher:
                     trackedObj: WatchedObject = obj.metadata.get(METAKEY_TRACKED_WATCHED_OBJ, None)
 
                     # Pop any detection info off that may be on the tracked object
-                    detections: list(WatchedObject.Detection) = obj.metadata.pop(METAKEY_DETECTIONS, [])
+                    detections: list[WatchedObject.Detection] = obj.metadata.pop(METAKEY_DETECTIONS, [])
                     if len(detections) > 0:
                         # Update objTracker with the 'detections removed' metadata
                         self._objTracker.updateBox(key, metadata=obj.metadata)

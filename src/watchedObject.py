@@ -19,7 +19,7 @@ class WatchedObject:
         self._framesCnt: int = 0
         self._framesSeen: int = 0
         self._framesSinceSeen: int = 0
-        self._confDict: dict(str, WatchedObject._ConfDictEntry) = {}
+        self._confDict: dict[str, WatchedObject._ConfDictEntry] = {}
         self._bestLabel: str = ""
         self._bestConf: float = 0.0
         if initialDetection is not None:
