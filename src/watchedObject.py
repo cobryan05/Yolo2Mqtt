@@ -28,6 +28,15 @@ class WatchedObject:
     def __repr__(self):
         return f"WatchedObject: {self.label}:{self.conf:0.2}"
 
+    def collapse(self):
+        ''' Collapse the confidence dictionary into a single entry with
+            the current best confidence  '''
+        resetDetection = WatchedObject.Detection(self.label, self.conf)
+        origMissingCnt = self._framesSinceSeen
+        self._confDict.clear()
+        self.markSeen(resetDetection)
+        self._framesSinceSeen = origMissingCnt
+
     def markMissing(self):
         ''' Mark that this object was missing for a frame '''
         self._framesSinceSeen += 1
