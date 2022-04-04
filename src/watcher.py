@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import math
 import time
+from signalslot import Signal
 
 from trackerTools.yoloInference import YoloInference
 from trackerTools.bbox import BBox
@@ -39,9 +40,30 @@ class Watcher:
         self._stopEvent: Event = Event()
         self._objTracker: ObjectTracker = ObjectTracker(distThresh=BBOX_TRACKER_MAX_DIST_THRESH)
         self._debug = debug
+        self._newObjSignal: Signal = Signal(args=['object', 'key'])
+        self._lostObjSignal: Signal = Signal(args=['object', 'key'])
+        self._updatedObjSignal: Signal = Signal(args=['object', 'key'])
 
     def stop(self):
         self._stopEvent.set()
+
+    def connectNewObjSignal(self, slot):
+        return self._newObjSignal.connect(slot)
+
+    def connectLostObjSignal(self, slot):
+        return self._lostObjSignal.connect(slot)
+
+    def connectUpdatedObjSignal(self, slot):
+        return self._updatedObjSignal.connect(slot)
+
+    def disconnectNewObjSignal(self, slot):
+        return self._newObjSignal.disconnect(slot)
+
+    def disconnectLostObjSignal(self, slot):
+        return self._lostObjSignal.disconnect(slot)
+
+    def disconnectUpdatedObjSignal(self, slot):
+        return self._updatedObjSignal.disconnect(slot)
 
     def run(self):
         print(f"Starting Watcher with [{self._source}], refreshing every {self._delay} seconds")
@@ -159,6 +181,7 @@ class Watcher:
                             forceInference = True
                             if trackedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
                                 print(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing")
+                                self._lostObjSignal.emit(object=trackedObj, key=key)
                                 self._objTracker.removeBox(key)
                     else:
                         # A previously tracked object, ensure it isn't marked as lost and add any new detections
@@ -169,6 +192,10 @@ class Watcher:
                         # Run inference every frame when there is a new object
                         if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
                             forceInference = True
+                        elif trackedObj.age == NEW_OBJ_MIN_FRAME_CNT:
+                            self._newObjSignal.emit(object=trackedObj, key=key)
+                        else:
+                            self._updatedObjSignal.emit(object=trackedObj, key=key)
 
                     print(f"{key} - {obj.metadata}")
 

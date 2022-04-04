@@ -6,12 +6,14 @@ import argparse
 import threading
 import time
 
+
 # fmt: off
 submodules_dir = os.path.join(pathlib.Path(__file__).parent.resolve(), "submodules")
 sys.path.append(submodules_dir)
 sys.path.append(os.path.join(submodules_dir, "yolov5"))
 from trackerTools.yoloInference import YoloInference
 from src.mqttClient import MqttClient
+from src.watchedObject import WatchedObject
 from src.watcher import Watcher
 from src.imgSources.urlSource import UrlSource
 from src.imgSources.videoSource import VideoSource
@@ -52,7 +54,11 @@ class CatTracker:
             modelName = cameraInfo.get("model", None)
             model = self.models[modelName]
             refreshDelay = cameraInfo.get("refresh", 5)
-            self.watchers[key] = Watcher(source=source, model=model, refreshDelay=refreshDelay, debug=args.debug)
+            watcher: Watcher = Watcher(source=source, model=model, refreshDelay=refreshDelay, debug=args.debug)
+            watcher.connectNewObjSignal(self._objAddedCallback)
+            watcher.connectLostObjSignal(self._objRemovedCallback)
+            watcher.connectUpdatedObjSignal(self._objUpdatedCallback)
+            self.watchers[key] = watcher
 
         print(f"Starting {len(self.watchers)} watchers...")
         threads: list[threading.Thread] = []
@@ -64,6 +70,15 @@ class CatTracker:
         # Wait until all threads exit (forever?)
         for thread in threads:
             thread.join()
+
+    def _objAddedCallback(self, object, key, **kwargs):
+        pass
+
+    def _objRemovedCallback(self, object, key, **kwargs):
+        pass
+
+    def _objUpdatedCallback(self, object, key, **kwargs):
+        pass
 
     @staticmethod
     def getSource(cameraConfig: dict):
