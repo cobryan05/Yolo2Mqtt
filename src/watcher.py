@@ -156,6 +156,7 @@ class Watcher:
                             self._objTracker.removeBox(key)
                         else:
                             trackedObj.markMissing()
+                            forceInference = True
                             if trackedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
                                 print(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing")
                                 self._objTracker.removeBox(key)
