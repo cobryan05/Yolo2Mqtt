@@ -18,9 +18,8 @@ from . watchedObject import WatchedObject
 METAKEY_TRACKED_WATCHED_OBJ = "trackedWatchedObj"
 METAKEY_DETECTIONS = "detections"
 
+
 LOST_OBJ_REMOVE_FRAME_CNT = 20  # How long must an object be lost before removed
-# After an object is lost for LOST_OBJ_RESET_CONFIDENCE_CNT frames, reset stat trackers. Helps avoid matching this box to a new detection
-LOST_OBJ_RESET_CONFIDENCE_CNT = 5
 NEW_OBJ_MIN_FRAME_CNT = 5  # How many frames must a new object be present in before considered new
 BBOX_TRACKER_MAX_DIST_THRESH = 0.5  # Percent of image a box can move and still be matched
 MAX_DETECT_INTERVAL = 10  # Maximum amount of frames without full detection
@@ -157,10 +156,6 @@ class Watcher:
                             self._objTracker.removeBox(key)
                         else:
                             trackedObj.markMissing()
-                            if trackedObj.framesSinceSeen == LOST_OBJ_RESET_CONFIDENCE_CNT:
-                                print(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, collapsing confidences")
-                                obj.metadata[METAKEY_TRACKED_WATCHED_OBJ].collapse()
-                                self._objTracker.updateBox(key, metadata=obj.metadata)
                             if trackedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
                                 print(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing")
                                 self._objTracker.removeBox(key)
