@@ -1,19 +1,31 @@
 ''' Class of an object watched by Watcher '''
 from __future__ import annotations
 from dataclasses import dataclass
+import json
+
+from trackerTools.bbox import BBox
 from . valueStatTracker import ValueStatTracker
 
 
 class WatchedObject:
+    KEY_LABEL: str = "label"
+    KEY_CONF: str = "conf"
+    KEY_AGE: str = "age"
+    KEY_FRAMES_MISSING: str = "framesMissing"
+    KEY_FRAMES_SEEN: str = "framesSeen"
+    KEY_BBOX: str = "bbox"
+
     @dataclass
     class Detection:
         label: str
         conf: float
+        bbox: BBox
 
     @dataclass
     class _ConfDictEntry:
         tracker: ValueStatTracker
         conf: float
+        bbox: BBox
 
     def __init__(self, initialDetection: WatchedObject.Detection = None):
         self._framesCnt: int = 0
@@ -27,6 +39,21 @@ class WatchedObject:
 
     def __repr__(self):
         return f"WatchedObject: {self.label}:{self.conf:0.2}"
+
+    def json(self):
+        bbox = None
+        if self.label is not None:
+            bbox = tuple(self._confDict[self.label].bbox.asRX1Y1WH())
+
+        output = {WatchedObject.KEY_LABEL: self.label,
+                  WatchedObject.KEY_CONF: self.conf,
+                  WatchedObject.KEY_FRAMES_MISSING: self.framesSinceSeen,
+                  WatchedObject.KEY_FRAMES_SEEN: self.framesSeen,
+                  WatchedObject.KEY_AGE: self.age,
+                  WatchedObject.KEY_BBOX: bbox
+                  }
+
+        return json.dumps(output)
 
     def markMissing(self):
         ''' Mark that this object was missing for a frame '''
@@ -46,8 +73,9 @@ class WatchedObject:
         if detection is not None:
             detectionEntry = self._confDict.setdefault(detection.label, None)
             if detectionEntry is None:
-                detectionEntry = WatchedObject._ConfDictEntry(ValueStatTracker(), None)
+                detectionEntry = WatchedObject._ConfDictEntry(ValueStatTracker(), None, None)
             detectionEntry.tracker.addValue(detection.conf)
+            detectionEntry.bbox = detection.bbox.copy()
             self._confDict[detection.label] = detectionEntry
             self._recalculateBest()
 

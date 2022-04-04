@@ -5,7 +5,7 @@ import json
 import argparse
 import threading
 import time
-
+from dataclasses import dataclass
 
 # fmt: off
 submodules_dir = os.path.join(pathlib.Path(__file__).parent.resolve(), "submodules")
@@ -27,13 +27,17 @@ CONFIG_KEY_PWD = "password"
 
 
 class CatTracker:
+    @dataclass
+    class _WatcherUserData:
+        name: str
+
     def __init__(self, args: argparse.Namespace):
         config: dict = json.load(open(args.config))
 
         mqtt = config.get("mqtt", {})
         mqttAddress = mqtt.get("address", "localhost")
         mqttPort = mqtt.get("port", 1883)
-        mqttPrefix = mqtt.get("prefix", "myhome/")
+        mqttPrefix = mqtt.get("prefix", "myhome/CatTracker/")
         print(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
 
         self.mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
@@ -45,7 +49,7 @@ class CatTracker:
                                              imgSize=int(modelInfo['width']),
                                              labels=modelInfo['labels'])
 
-        self.watchers: dict[str, Watcher] = {}
+        self.watchers: dict[str, _WatcherInfo] = {}
         for key, cameraInfo in config.get("cameras", {}).items():
             source = CatTracker.getSource(cameraInfo)
             if source is None:
@@ -54,7 +58,9 @@ class CatTracker:
             modelName = cameraInfo.get("model", None)
             model = self.models[modelName]
             refreshDelay = cameraInfo.get("refresh", 5)
-            watcher: Watcher = Watcher(source=source, model=model, refreshDelay=refreshDelay, debug=args.debug)
+            userData = CatTracker._WatcherUserData(key)
+            watcher: Watcher = Watcher(source=source, model=model, refreshDelay=refreshDelay,
+                                       userData=userData, debug=args.debug)
             watcher.connectNewObjSignal(self._objAddedCallback)
             watcher.connectLostObjSignal(self._objRemovedCallback)
             watcher.connectUpdatedObjSignal(self._objUpdatedCallback)
@@ -71,14 +77,23 @@ class CatTracker:
         for thread in threads:
             thread.join()
 
-    def _objAddedCallback(self, object, key, **kwargs):
-        pass
+    def _objAddedCallback(self, obj, key, userData, **kwargs):
+        # SignalSlots doesn't support annotations
+        obj: WatchedObject = obj
+        userData: CatTracker._WatcherUserData = userData
+        self.mqtt.publish(f"{userData.name}/{key}", obj.json(), retain=False)
 
-    def _objRemovedCallback(self, object, key, **kwargs):
-        pass
+    def _objRemovedCallback(self, obj, key, userData, **kwargs):
+        # SignalSlots doesn't support annotations
+        obj: WatchedObject = obj
+        userData: CatTracker._WatcherUserData = userData
+        self.mqtt.publish(f"{userData.name}/{key}", None, retain=False)
 
-    def _objUpdatedCallback(self, object, key, **kwargs):
-        pass
+    def _objUpdatedCallback(self, obj, key, userData, **kwargs):
+        # SignalSlots doesn't support annotations
+        obj: WatchedObject = obj
+        userData: CatTracker._WatcherUserData = userData
+        self.mqtt.publish(f"{userData.name}/{key}", obj.json(), retain=False)
 
     @staticmethod
     def getSource(cameraConfig: dict):

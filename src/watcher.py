@@ -31,18 +31,18 @@ class Watcher:
     @dataclass
     class _DetectionInfo:
         detection: WatchedObject.Detection
-        bbox: BBox
 
-    def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, debug: bool = False):
+    def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, userData=None, debug: bool = False):
         self._source: Source = source
         self._model: YoloInference = model
         self._delay: float = refreshDelay
         self._stopEvent: Event = Event()
         self._objTracker: ObjectTracker = ObjectTracker(distThresh=BBOX_TRACKER_MAX_DIST_THRESH)
+        self._userData = userData
         self._debug = debug
-        self._newObjSignal: Signal = Signal(args=['object', 'key'])
-        self._lostObjSignal: Signal = Signal(args=['object', 'key'])
-        self._updatedObjSignal: Signal = Signal(args=['object', 'key'])
+        self._newObjSignal: Signal = Signal(args=['obj', 'key', 'userData'])
+        self._lostObjSignal: Signal = Signal(args=['obj', 'key', 'userData'])
+        self._updatedObjSignal: Signal = Signal(args=['obj', 'key', 'userData'])
 
     def stop(self):
         self._stopEvent.set()
@@ -115,12 +115,12 @@ class Watcher:
                 SAME_BOX_DIST_THRESH = 0.03
                 SAME_BOX_SIZE_THRESH = 0.9
                 for bbox, conf, objClass, label in yoloRes:
-                    detectInfo = Watcher._DetectionInfo(bbox=bbox, detection=WatchedObject.Detection(label, conf))
+                    detectInfo = Watcher._DetectionInfo(detection=WatchedObject.Detection(label, conf, bbox))
 
                     # Check if this may be a second detection of the same object
                     dupIdx = -1
                     for idx, prevDet in enumerate(detBboxes):
-                        if detectInfo.bbox.similar(prevDet, SAME_BOX_DIST_THRESH, SAME_BOX_SIZE_THRESH):
+                        if detectInfo.detection.bbox.similar(prevDet, SAME_BOX_DIST_THRESH, SAME_BOX_SIZE_THRESH):
                             dupIdx = idx
                             break
 
@@ -181,7 +181,7 @@ class Watcher:
                             forceInference = True
                             if trackedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
                                 print(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing")
-                                self._lostObjSignal.emit(object=trackedObj, key=key)
+                                self._lostObjSignal.emit(obj=trackedObj, key=key, userData=self._userData)
                                 self._objTracker.removeBox(key)
                     else:
                         # A previously tracked object, ensure it isn't marked as lost and add any new detections
@@ -193,9 +193,9 @@ class Watcher:
                         if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
                             forceInference = True
                         elif trackedObj.age == NEW_OBJ_MIN_FRAME_CNT:
-                            self._newObjSignal.emit(object=trackedObj, key=key)
+                            self._newObjSignal.emit(obj=trackedObj, key=key, userData=self._userData)
                         else:
-                            self._updatedObjSignal.emit(object=trackedObj, key=key)
+                            self._updatedObjSignal.emit(obj=trackedObj, key=key, userData=self._userData)
 
                     print(f"{key} - {obj.metadata}")
 
