@@ -168,7 +168,7 @@ class Watcher:
                         trackedObj: WatchedObject = WatchedObject()
                         for detectInfo in detBboxes:
                             trackedObj.markSeen(detectInfo.detection, newFrame=False)
-
+                        forceInference = True
                         obj.metadata[METAKEY_TRACKED_WATCHED_OBJ] = trackedObj
                         self._objTracker.updateBox(key, metadata=obj.metadata)
                     elif key in lostObjs:
