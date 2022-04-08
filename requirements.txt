@@ -1,0 +1,10 @@
+opencv-contrib-python-headless==4.5.5.64
+opencv-python-headless==4.5.5.64
+paho-mqtt==1.6.1
+torch==1.10.2
+pandas==1.3.4
+PyYAML==6.0
+Pillow==8.4.0
+signalslot==0.1.2
+matplotlib==3.4.3
+seaborn==0.11.2
