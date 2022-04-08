@@ -26,7 +26,7 @@ CONFIG_KEY_USER = "user"
 CONFIG_KEY_PWD = "password"
 
 
-class CatTracker:
+class Yolo2Mqtt:
     @dataclass
     class _WatcherUserData:
         name: str
@@ -37,7 +37,7 @@ class CatTracker:
         mqtt = config.get("mqtt", {})
         mqttAddress = mqtt.get("address", "localhost")
         mqttPort = mqtt.get("port", 1883)
-        mqttPrefix = mqtt.get("prefix", "myhome/CatTracker/")
+        mqttPrefix = mqtt.get("prefix", "myhome/yolo2mqtt/")
         print(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
 
         self.mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
@@ -51,14 +51,14 @@ class CatTracker:
 
         self.watchers: dict[str, _WatcherInfo] = {}
         for key, cameraInfo in config.get("cameras", {}).items():
-            source = CatTracker.getSource(cameraInfo)
+            source = Yolo2Mqtt.getSource(cameraInfo)
             if source is None:
                 print("Couldn't create source for [{key}]")
                 continue
             modelName = cameraInfo.get("model", None)
             model = self.models[modelName]
             refreshDelay = cameraInfo.get("refresh", 5)
-            userData = CatTracker._WatcherUserData(key)
+            userData = Yolo2Mqtt._WatcherUserData(key)
             watcher: Watcher = Watcher(source=source, model=model, refreshDelay=refreshDelay,
                                        userData=userData, debug=args.debug)
             watcher.connectNewObjSignal(self._objAddedCallback)
@@ -80,19 +80,19 @@ class CatTracker:
     def _objAddedCallback(self, obj, key, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
-        userData: CatTracker._WatcherUserData = userData
+        userData: Yolo2Mqtt._WatcherUserData = userData
         self.mqtt.publish(f"{userData.name}/{key}", obj.json(), retain=False)
 
     def _objRemovedCallback(self, obj, key, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
-        userData: CatTracker._WatcherUserData = userData
+        userData: Yolo2Mqtt._WatcherUserData = userData
         self.mqtt.publish(f"{userData.name}/{key}", None, retain=False)
 
     def _objUpdatedCallback(self, obj, key, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
-        userData: CatTracker._WatcherUserData = userData
+        userData: Yolo2Mqtt._WatcherUserData = userData
         self.mqtt.publish(f"{userData.name}/{key}", obj.json(), retain=False)
 
     @staticmethod
@@ -127,5 +127,5 @@ def parseArgs():
 #
 if __name__ == "__main__":
     args = parseArgs()
-    catTracker = CatTracker(args)
-    catTracker.run()
+    Yolo2Mqtt = Yolo2Mqtt(args)
+    Yolo2Mqtt.run()
