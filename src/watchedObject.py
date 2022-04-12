@@ -55,6 +55,18 @@ class WatchedObject:
 
         return json.dumps(output)
 
+    @classmethod
+    def fromJson(cls, jsonStr: str) -> tuple[WatchedObject, BBox]:
+        value = json.loads(jsonStr)
+        newObj = WatchedObject()
+        newObj._bestLabel = value.get(WatchedObject.KEY_LABEL, "")
+        newObj._bestConf = value.get(WatchedObject.KEY_CONF, 0.0)
+        newObj._framesSinceSeen = value.get(WatchedObject.KEY_FRAMES_MISSING, 0)
+        newObj._framesSeen = value.get(WatchedObject.KEY_FRAMES_SEEN, 0)
+        newObj._framesCnt = value.get(WatchedObject.KEY_AGE, 0)
+        bbox = value.get(WatchedObject.KEY_BBOX, BBox((0, 0, 0, 0)))
+        return(newObj, bbox)
+
     def markMissing(self):
         ''' Mark that this object was missing for a frame '''
         self._framesSinceSeen += 1
