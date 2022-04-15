@@ -34,7 +34,7 @@ class WatchedObject:
         self._confDict: dict[str, WatchedObject._ConfDictEntry] = {}
         self._bestLabel: str = ""
         self._bestConf: float = 0.0
-        self._bestBbox: BBox = BBox((0, 0, 0, 0))
+        self._lastBbox: BBox = BBox((0, 0, 0, 0))
         if initialDetection is not None:
             self.markSeen(initialDetection)
 
@@ -59,7 +59,7 @@ class WatchedObject:
         newObj._bestLabel = value.get(WatchedObject.KEY_LABEL, "")
         newObj._bestConf = value.get(WatchedObject.KEY_CONF, 0.0)
         bboxTuple = value.get(WatchedObject.KEY_BBOX, (0, 0, 0, 0))
-        newObj._bestBbox = BBox.fromRX1Y1WH(*bboxTuple)
+        newObj._lastBbox = BBox.fromRX1Y1WH(*bboxTuple)
         newObj._framesSinceSeen = value.get(WatchedObject.KEY_FRAMES_MISSING, 0)
         newObj._framesSeen = value.get(WatchedObject.KEY_FRAMES_SEEN, 0)
         newObj._framesCnt = value.get(WatchedObject.KEY_AGE, 0)
@@ -86,6 +86,7 @@ class WatchedObject:
                 detectionEntry = WatchedObject._ConfDictEntry(ValueStatTracker(), None, None)
             detectionEntry.tracker.addValue(detection.conf)
             detectionEntry.bbox = detection.bbox.copy()
+            self._lastBbox = detectionEntry.bbox
             self._confDict[detection.label] = detectionEntry
             self._recalculateBest()
 
@@ -110,7 +111,6 @@ class WatchedObject:
         # is the best label by the confidence of that label
         self._bestLabel = bestLabel
         self._bestConf = bestTracker.avg * bestConf
-        self._bestBbox = bestBbox
 
     def labelConf(self, label) -> float:
         ''' Check confidence of a given label '''
@@ -132,7 +132,7 @@ class WatchedObject:
     @property
     def bbox(self) -> BBox:
         ''' Most recent BBox for object '''
-        return self._bestBbox
+        return self._lastBbox
 
     @property
     def conf(self) -> float:
