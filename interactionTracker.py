@@ -1,5 +1,7 @@
 import json
 import argparse
+import cv2
+import numpy as np
 import time
 import paho.mqtt.client as mqtt
 import re
@@ -16,6 +18,7 @@ sys.path.append(submodules_dir)
 from src.contextChecker import ContextChecker
 from src.mqttClient import MqttClient
 from src.watchedObject import WatchedObject
+from src.watcher import Watcher
 # fmt: on
 
 CONFIG_KEY_INTRCTS = "interactions"
@@ -36,6 +39,7 @@ class TrackedLabel:
 
 @dataclass
 class Context:
+    name: str
     checker: ContextChecker
     objectMap: dict[int, TrackedObject] = field(default_factory=dict)
     labelMap: dict[str, TrackedLabel] = field(default_factory=dict)
@@ -44,6 +48,7 @@ class Context:
 class InteractionTracker:
     def __init__(self, args: argparse.Namespace):
         self._config: dict = json.load(open(args.config))
+        self._debug = args.debug
 
         mqttCfg = self._config.get("mqtt", {})
         mqttAddress = mqttCfg.get("address", "localhost")
@@ -62,10 +67,13 @@ class InteractionTracker:
 
     def run(self):
         while True:
-            time.sleep(10)
+            time.sleep(1)
             for key, context in self._contexts.items():
                 objList = [trackedObj.obj for trackedObj in context.objectMap.values()]
                 context.checker.getEvents(objList)
+
+                if self._debug:
+                    InteractionTracker.debugContext(context)
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
         match = self._topicRe.match(msg.topic)
@@ -75,13 +83,23 @@ class InteractionTracker:
             print("Removed!")
         else:
             objInfo = WatchedObject.fromJson(msg.payload.decode())
+            context = self._contexts.get(cameraName, None)
+            # New context?
+            if context is None:
+                context = Context(name=cameraName, checker=ContextChecker(self._contextConfig))
+                self._contexts[cameraName] = context
+            context.objectMap[objId] = TrackedObject(obj=objInfo)
 
-            context: Context = self._contexts.setdefault(
-                cameraName, Context(checker=ContextChecker(self._contextConfig)))
-            trackedLabel = context.labelMap.setdefault(objInfo.label, TrackedLabel())
-            trackedLabel.ids.add(objId)
-
-            trackedObj = context.objectMap[objId] = TrackedObject(obj=objInfo)
+    @staticmethod
+    def debugContext(context: Context):
+        cv2.namedWindow(context.name, flags=cv2.WINDOW_NORMAL)
+        dbgImg = np.zeros((1000, 1000, 3))
+        for key, trackedObj in context.objectMap.items():
+            obj: WatchedObject = trackedObj.obj
+            Watcher.drawBboxOnImage(dbgImg, obj.bbox)
+            Watcher.drawBboxLabel(dbgImg, obj.bbox, f"{key} {obj.label}")
+        cv2.imshow(context.name, dbgImg)
+        cv2.waitKey(1)
 
 
 def parseArgs():
