@@ -28,18 +28,18 @@ RE_GROUP_OBJID = "objectId"
 
 class InteractionTracker:
     def __init__(self, args: argparse.Namespace):
-        config: dict = json.load(open(args.config))
+        self._config: dict = json.load(open(args.config))
 
-        mqtt = config.get("mqtt", {})
-        mqttAddress = mqtt.get("address", "localhost")
-        mqttPort = mqtt.get("port", 1883)
-        mqttPrefix = mqtt.get("prefix", "myhome/yolo2mqtt/")
+        mqttCfg = self._config.get("mqtt", {})
+        mqttAddress = mqttCfg.get("address", "localhost")
+        mqttPort = mqttCfg.get("port", 1883)
+        mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt/")
         print(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
 
-        self.mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
-                                           broker_port=mqttPort, prefix=mqttPrefix)
+        self._mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
+                                            broker_port=mqttPort, prefix=mqttPrefix)
 
-        self.mqtt.subscribe("#", self.mqttCallback)
+        self._mqtt.subscribe("#", self.mqttCallback)
 
         self._topicRe: re.Pattern = re.compile(rf"{mqttPrefix}(?P<{RE_GROUP_CAMERA}>[^/]+)/(?P<{RE_GROUP_OBJID}>.*)")
 
