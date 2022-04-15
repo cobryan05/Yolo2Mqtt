@@ -34,6 +34,7 @@ class WatchedObject:
         self._confDict: dict[str, WatchedObject._ConfDictEntry] = {}
         self._bestLabel: str = ""
         self._bestConf: float = 0.0
+        self._bestBbox: BBox = BBox((0, 0, 0, 0))
         if initialDetection is not None:
             self.markSeen(initialDetection)
 
@@ -41,31 +42,28 @@ class WatchedObject:
         return f"WatchedObject: {self.label}:{self.conf:0.2}"
 
     def json(self):
-        bbox = None
-        if self.label is not None:
-            bbox = tuple(self._confDict[self.label].bbox.asRX1Y1WH())
-
         output = {WatchedObject.KEY_LABEL: self.label,
                   WatchedObject.KEY_CONF: self.conf,
                   WatchedObject.KEY_FRAMES_MISSING: self.framesSinceSeen,
                   WatchedObject.KEY_FRAMES_SEEN: self.framesSeen,
                   WatchedObject.KEY_AGE: self.age,
-                  WatchedObject.KEY_BBOX: bbox
+                  WatchedObject.KEY_BBOX: self.bbox.asRX1Y1WH()
                   }
 
         return json.dumps(output)
 
     @classmethod
-    def fromJson(cls, jsonStr: str) -> tuple[WatchedObject, BBox]:
+    def fromJson(cls, jsonStr: str) -> WatchedObject:
         value = json.loads(jsonStr)
         newObj = WatchedObject()
         newObj._bestLabel = value.get(WatchedObject.KEY_LABEL, "")
         newObj._bestConf = value.get(WatchedObject.KEY_CONF, 0.0)
+        bboxTuple = value.get(WatchedObject.KEY_BBOX, (0, 0, 0, 0))
+        newObj._bestBbox = BBox.fromRX1Y1WH(*bboxTuple)
         newObj._framesSinceSeen = value.get(WatchedObject.KEY_FRAMES_MISSING, 0)
         newObj._framesSeen = value.get(WatchedObject.KEY_FRAMES_SEEN, 0)
         newObj._framesCnt = value.get(WatchedObject.KEY_AGE, 0)
-        bbox = value.get(WatchedObject.KEY_BBOX, BBox((0, 0, 0, 0)))
-        return(newObj, bbox)
+        return newObj
 
     def markMissing(self):
         ''' Mark that this object was missing for a frame '''
@@ -96,6 +94,7 @@ class WatchedObject:
         bestConf = 0.0
         bestLabel = None
         bestTracker = None
+        bestBbox = None
 
         # Determine confidence this is the best label among tracked labels
         meanConfSum = sum([entry.tracker.avg*entry.tracker.n for entry in self._confDict.values()])
@@ -105,11 +104,13 @@ class WatchedObject:
                 bestConf = entry.conf
                 bestLabel = key
                 bestTracker = entry.tracker
+                bestBbox = entry.bbox
 
         # Now get overall confidence by multiplying the confidence that this
         # is the best label by the confidence of that label
         self._bestLabel = bestLabel
         self._bestConf = bestTracker.avg * bestConf
+        self._bestBbox = bestBbox
 
     def labelConf(self, label) -> float:
         ''' Check confidence of a given label '''
@@ -127,6 +128,11 @@ class WatchedObject:
     def label(self) -> str:
         ''' Best label of the object '''
         return self._bestLabel
+
+    @property
+    def bbox(self) -> BBox:
+        ''' Most recent BBox for object '''
+        return self._bestBbox
 
     @property
     def conf(self) -> float:

@@ -49,8 +49,7 @@ class InteractionTracker:
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
         match = self._topicRe.match(msg.topic)
-        objInfo, bbox = WatchedObject.fromJson(msg.payload.decode())
-        pass
+        objInfo = WatchedObject.fromJson(msg.payload.decode())
 
 
 def parseArgs():
