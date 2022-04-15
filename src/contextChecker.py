@@ -39,13 +39,13 @@ class ContextChecker:
             newConfig = ConfiguredInteraction(name=event, listA=listA, listB=listB, thresh=thresh, minFrames=minFrames)
             self._events.append(newConfig)
 
-    def getEvents(self, objects: list[WatchedObject]):
+    def getEvents(self, objects: list[WatchedObject], idList: list[int]):
         overlaps = ContextChecker.getOverlaps([obj.bbox for obj in objects])
         for overlap in overlaps:
             idxA, idxB = overlap.index_pair
             objA = objects[idxA]
             objB = objects[idxB]
-            print(f"{idxA}:{objA.label} overlaps {idxB}:{objB.label} IoS: {overlap.ios}")
+            print(f"{idList[idxA]}:{objA.label} overlaps {idList[idxB]}:{objB.label} IoS: {overlap.ios}")
         pass
 
     @staticmethod

@@ -10,6 +10,7 @@ import pathlib
 import sys
 
 from dataclasses import dataclass, field
+from threading import Lock
 
 
 # fmt: off
@@ -42,13 +43,13 @@ class Context:
     name: str
     checker: ContextChecker
     objectMap: dict[int, TrackedObject] = field(default_factory=dict)
-    labelMap: dict[str, TrackedLabel] = field(default_factory=dict)
 
 
 class InteractionTracker:
     def __init__(self, args: argparse.Namespace):
         self._config: dict = json.load(open(args.config))
         self._debug = args.debug
+        self._lock: Lock = Lock()
 
         mqttCfg = self._config.get("mqtt", {})
         mqttAddress = mqttCfg.get("address", "localhost")
@@ -68,9 +69,15 @@ class InteractionTracker:
     def run(self):
         while True:
             time.sleep(1)
+            self.checkForEvents()
+
+    def checkForEvents(self):
+        with self._lock:
             for key, context in self._contexts.items():
+                print(f"{context.objectMap}")
                 objList = [trackedObj.obj for trackedObj in context.objectMap.values()]
-                context.checker.getEvents(objList)
+                idList = [id for id in context.objectMap.keys()]
+                context.checker.getEvents(objList, idList)
 
                 if self._debug:
                     InteractionTracker.debugContext(context)
@@ -79,16 +86,22 @@ class InteractionTracker:
         match = self._topicRe.match(msg.topic)
         objId: int = int(match[RE_GROUP_OBJID])
         cameraName: str = match[RE_GROUP_CAMERA]
-        if len(msg.payload) == 0:
-            print("Removed!")
-        else:
-            objInfo = WatchedObject.fromJson(msg.payload.decode())
+
+        with self._lock:
             context = self._contexts.get(cameraName, None)
             # New context?
             if context is None:
                 context = Context(name=cameraName, checker=ContextChecker(self._contextConfig))
                 self._contexts[cameraName] = context
-            context.objectMap[objId] = TrackedObject(obj=objInfo)
+
+            if len(msg.payload) == 0:
+                context.objectMap.pop(objId, None)
+                print(f"Removed {objId}. Tracking {len(context.objectMap)} objects.")
+            else:
+                objInfo = WatchedObject.fromJson(msg.payload.decode())
+                if objId not in context.objectMap:
+                    print(f"Added {objId}. Tracking {len(context.objectMap)} objects.")
+                context.objectMap[objId] = TrackedObject(obj=objInfo)
 
     @staticmethod
     def debugContext(context: Context):

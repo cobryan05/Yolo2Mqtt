@@ -188,6 +188,7 @@ class Watcher:
                         for detectInfo in detBboxes:
                             trackedObj.markSeen(detectInfo.detection, newFrame=False)
                         trackedObj.markSeen()
+                        self._objTracker.updateBox(key, bbox=trackedObj.bbox)
 
                         # Run inference every frame when there is a new object
                         if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
