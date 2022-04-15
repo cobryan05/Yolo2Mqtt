@@ -7,23 +7,38 @@ import os
 import pathlib
 import sys
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
 
 # fmt: off
 submodules_dir = os.path.join(pathlib.Path(__file__).parent.resolve(), "submodules")
 sys.path.append(submodules_dir)
+from src.contextChecker import ContextChecker
 from src.mqttClient import MqttClient
 from src.watchedObject import WatchedObject
 # fmt: on
 
 CONFIG_KEY_INTRCTS = "interactions"
-CONFIG_KEY_INTRCT_THRESH = "threshold"
-CONFIG_KEY_INTRCT_MIN_FRAMES = "min_frames"
-CONFIG_KEY_INTRCT_OBJ_A = "first"
-CONFIG_KEY_INTRCT_OBJ_B = "second"
 
 RE_GROUP_CAMERA = "camera"
 RE_GROUP_OBJID = "objectId"
+
+
+@dataclass
+class TrackedObject:
+    obj: WatchedObject
+
+
+@dataclass
+class TrackedLabel:
+    ids: set[int] = field(default_factory=set)
+
+
+@dataclass
+class Context:
+    checker: ContextChecker
+    objectMap: dict[int, TrackedObject] = field(default_factory=dict)
+    labelMap: dict[str, TrackedLabel] = field(default_factory=dict)
 
 
 class InteractionTracker:
@@ -41,15 +56,32 @@ class InteractionTracker:
 
         self._mqtt.subscribe("#", self.mqttCallback)
 
+        self._contextConfig: dict = self._config.get(CONFIG_KEY_INTRCTS, {})
+        self._contexts: dict[str, Context] = {}
         self._topicRe: re.Pattern = re.compile(rf"{mqttPrefix}(?P<{RE_GROUP_CAMERA}>[^/]+)/(?P<{RE_GROUP_OBJID}>.*)")
 
     def run(self):
         while True:
             time.sleep(10)
+            for key, context in self._contexts.items():
+                objList = [trackedObj.obj for trackedObj in context.objectMap.values()]
+                context.checker.getEvents(objList)
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
         match = self._topicRe.match(msg.topic)
-        objInfo = WatchedObject.fromJson(msg.payload.decode())
+        objId: int = int(match[RE_GROUP_OBJID])
+        cameraName: str = match[RE_GROUP_CAMERA]
+        if len(msg.payload) == 0:
+            print("Removed!")
+        else:
+            objInfo = WatchedObject.fromJson(msg.payload.decode())
+
+            context: Context = self._contexts.setdefault(
+                cameraName, Context(checker=ContextChecker(self._contextConfig)))
+            trackedLabel = context.labelMap.setdefault(objInfo.label, TrackedLabel())
+            trackedLabel.ids.add(objId)
+
+            trackedObj = context.objectMap[objId] = TrackedObject(obj=objInfo)
 
 
 def parseArgs():
