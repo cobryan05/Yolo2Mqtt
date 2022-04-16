@@ -76,7 +76,7 @@ class MqttClient:
             self._mqtt.loop_stop()
 
     def mqtt_message_callback(self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
-        print(f"Received topic|message: {msg.topic}|{msg.payload.decode()}")
+        #print(f"Received topic|message: {msg.topic}|{msg.payload.decode()}")
         for topic, data in self._subMap.items():
             topic = topic.rstrip("#")
             if msg.topic.startswith(topic) and callable(data.callback):
