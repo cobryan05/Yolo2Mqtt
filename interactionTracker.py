@@ -22,6 +22,10 @@ from src.watchedObject import WatchedObject
 from src.watcher import Watcher
 # fmt: on
 
+MQTT_KEY_EVENT_NAME = "name"
+MQTT_KEY_FIRST = "first"
+MQTT_KEY_SECOND = "second"
+
 CONFIG_KEY_INTRCTS = "interactions"
 
 RE_GROUP_CAMERA = "camera"
@@ -75,17 +79,20 @@ class InteractionTracker:
         mqttCfg = self._config.get("mqtt", {})
         mqttAddress = mqttCfg.get("address", "localhost")
         mqttPort = mqttCfg.get("port", 1883)
-        mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt/")
+        mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt/").rstrip('/)')
+        self._mqttEvents = mqttCfg.get("events", "events").rstrip('/')
+        self._mqttDet = mqttCfg.get("detections", "detections").rstrip('/')
         print(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
 
         self._mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
                                             broker_port=mqttPort, prefix=mqttPrefix)
 
-        self._mqtt.subscribe("#", self.mqttCallback)
+        self._mqtt.subscribe(f"{self._mqttDet}/#", self.mqttCallback)
 
         self._contextConfig: dict = self._config.get(CONFIG_KEY_INTRCTS, {})
         self._contexts: dict[str, Context] = {}
-        self._topicRe: re.Pattern = re.compile(rf"{mqttPrefix}(?P<{RE_GROUP_CAMERA}>[^/]+)/(?P<{RE_GROUP_OBJID}>.*)")
+        self._topicRe: re.Pattern = re.compile(
+            rf"{mqttPrefix}/{self._mqttDet}/(?P<{RE_GROUP_CAMERA}>[^/]+)/(?P<{RE_GROUP_OBJID}>.*)")
 
     def run(self):
         while True:
@@ -116,8 +123,8 @@ class InteractionTracker:
                             print(f"{eventKey} was not in missedEvents")
 
                         if not trackedEvent.triggered and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
-                            print(f"Triggered event {eventKey}")
                             trackedEvent.triggered = True
+                            self.publishEvent(context.name, eventKey)
                     trackedEvent.lastTimestamp = time.time()
 
                 # Check for expired events
@@ -126,11 +133,25 @@ class InteractionTracker:
                     eventConfig = self._contextConfig[eventKey.name]
                     if time.time() > event.lastTimestamp + float(eventConfig["expire_time"]):
                         if event.triggered:
-                            print(f"Expired event {eventKey}")
+                            self.publishEvent(context.name, eventKey, clear=True)
                         context.events.pop(eventKey)
 
                 if self._debug:
                     InteractionTracker.debugContext(context)
+
+    def publishEvent(self, contextName: str, eventKey: EventKey, clear: bool = False):
+        data = {}
+        data[MQTT_KEY_EVENT_NAME] = eventKey.name
+        data[MQTT_KEY_FIRST] = eventKey.first
+        data[MQTT_KEY_SECOND] = eventKey.second
+        topic = self._getEventTopic(contextName, eventKey)
+        if clear:
+            self._mqtt.publish(topic, None, True)
+        else:
+            self._mqtt.publish(topic, json.dumps(data), False)
+
+    def _getEventTopic(self, contextName: str, eventKey: EventKey) -> str:
+        return f"{self._mqttEvents}/{contextName}/{eventKey.name}"
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
         match = self._topicRe.match(msg.topic)

@@ -34,10 +34,12 @@ class Yolo2Mqtt:
     def __init__(self, args: argparse.Namespace):
         config: dict = json.load(open(args.config))
 
-        mqtt = config.get("mqtt", {})
-        mqttAddress = mqtt.get("address", "localhost")
-        mqttPort = mqtt.get("port", 1883)
-        mqttPrefix = mqtt.get("prefix", "myhome/yolo2mqtt/")
+        mqttCfg = config.get("mqtt", {})
+        mqttAddress = mqttCfg.get("address", "localhost")
+        mqttPort = mqttCfg.get("port", 1883)
+        mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt").rstrip('/')
+        self._mqttDet = mqttCfg.get("detections", "detections").rstrip('/')
+
         print(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
 
         self.mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
@@ -81,19 +83,22 @@ class Yolo2Mqtt:
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(f"{userData.name}/{obj.objId}", obj.json(), retain=False)
+        self.mqtt.publish(self._getDetTopic(obj, userData), obj.json(), retain=False)
 
     def _objRemovedCallback(self, obj, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(f"{userData.name}/{obj.objId}", None, retain=False)
+        self.mqtt.publish(self._getDetTopic(obj, userData), None, retain=False)
 
     def _objUpdatedCallback(self, obj, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(f"{userData.name}/{obj.objId}", obj.json(), retain=False)
+        self.mqtt.publish(self._getDetTopic(obj, userData), obj.json(), retain=False)
+
+    def _getDetTopic(self, obj: WatchedObject, userData: _WatcherUserData) -> str:
+        return f"{self._mqttDet}/{userData.name}/{obj.objId}"
 
     @staticmethod
     def getSource(cameraConfig: dict):
