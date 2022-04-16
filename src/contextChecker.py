@@ -28,9 +28,14 @@ class OverlapInfo:
 
 
 class ContextChecker:
+    @dataclass
+    class EventInfo:
+        event: ConfiguredInteraction
+        first: WatchedObject
+        second: WatchedObject
 
     def __init__(self, config: dict[str, dict]):
-        self._events = []
+        self._events: list[ConfiguredInteraction] = []
         for event, eventInfo in config.items():
             listA = eventInfo[CONFIG_KEY_INTRCT_OBJ_A]
             listB = eventInfo[CONFIG_KEY_INTRCT_OBJ_B]
@@ -39,14 +44,27 @@ class ContextChecker:
             newConfig = ConfiguredInteraction(name=event, listA=listA, listB=listB, thresh=thresh, minFrames=minFrames)
             self._events.append(newConfig)
 
-    def getEvents(self, objects: list[WatchedObject], idList: list[int]):
+    def getEvents(self, objects: list[WatchedObject]) -> list[EventInfo]:
+        triggeredEvents: list[ContextChecker.EventInfo] = []
         overlaps = ContextChecker.getOverlaps([obj.bbox for obj in objects])
         for overlap in overlaps:
             idxA, idxB = overlap.index_pair
             objA = objects[idxA]
             objB = objects[idxB]
-            print(f"{idList[idxA]}:{objA.label} overlaps {idList[idxB]}:{objB.label} IoS: {overlap.ios}")
-        pass
+
+            for event in self._events:
+                if objA.label in event.listA and objB.label in event.listB:
+                    objs = (objA, objB)
+                elif objA.label in event.listB and objB.label in event.listA:
+                    objs = (objB, objA)
+                else:
+                    objs = None
+                if objs:
+                    eventInfo: ContextChecker.EventInfo = ContextChecker.EventInfo(
+                        event=event, first=objs[0], second=objs[1])
+                    triggeredEvents.append(eventInfo)
+
+        return triggeredEvents
 
     @staticmethod
     def getOverlaps(bboxes: list[BBox]) -> list[OverlapInfo]:

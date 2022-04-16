@@ -39,10 +39,30 @@ class TrackedLabel:
 
 
 @dataclass
+class EventKey:
+    name: str
+    first: str
+    second: str
+
+    def __hash__(self):
+        return hash(str(self))
+
+    def __eq__(self, other):
+        return self.name == other.name and self.first == other.first and self.second == other.second
+
+
+@dataclass
+class EventValue:
+    firstTimestamp: float = 0.0
+    lastTimestamp: float = 0.0
+
+
+@dataclass
 class Context:
     name: str
     checker: ContextChecker
     objectMap: dict[int, TrackedObject] = field(default_factory=dict)
+    events: dict[EventKey, EventValue] = field(default_factory=dict)
 
 
 class InteractionTracker:
@@ -77,7 +97,18 @@ class InteractionTracker:
                 print(f"{context.objectMap}")
                 objList = [trackedObj.obj for trackedObj in context.objectMap.values()]
                 idList = [id for id in context.objectMap.keys()]
-                context.checker.getEvents(objList, idList)
+                events = context.checker.getEvents(objList)
+
+                for event in events:
+                    eventKey: EventKey = EventKey(name=event.event.name,
+                                                  first=event.first.label,
+                                                  second=event.second.label)
+                    trackedEvent = context.events.get(eventKey, None)
+                    if trackedEvent is None:
+                        trackedEvent = EventValue()
+                        trackedEvent.firstTimestamp = time.time()
+                        context.events[eventKey] = trackedEvent
+                    trackedEvent.lastTimestamp = time.time()
 
                 if self._debug:
                     InteractionTracker.debugContext(context)
