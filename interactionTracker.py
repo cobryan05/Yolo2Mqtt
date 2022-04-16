@@ -68,6 +68,7 @@ class Context:
     checker: ContextChecker
     objectMap: dict[int, TrackedObject] = field(default_factory=dict)
     events: dict[EventKey, EventValue] = field(default_factory=dict)
+    nextEventIdMap: dict[str, int] = field(default_factory=dict)
 
 
 class InteractionTracker:
@@ -124,7 +125,7 @@ class InteractionTracker:
 
                         if not trackedEvent.triggered and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
                             trackedEvent.triggered = True
-                            self.publishEvent(context.name, eventKey)
+                            self.publishEvent(context, eventKey)
                     trackedEvent.lastTimestamp = time.time()
 
                 # Check for expired events
@@ -133,25 +134,28 @@ class InteractionTracker:
                     eventConfig = self._contextConfig[eventKey.name]
                     if time.time() > event.lastTimestamp + float(eventConfig["expire_time"]):
                         if event.triggered:
-                            self.publishEvent(context.name, eventKey, clear=True)
+                            self.publishEvent(context, eventKey, clear=True)
                         context.events.pop(eventKey)
 
                 if self._debug:
                     InteractionTracker.debugContext(context)
 
-    def publishEvent(self, contextName: str, eventKey: EventKey, clear: bool = False):
+    def publishEvent(self, context: Context, eventKey: EventKey, clear: bool = False):
         data = {}
         data[MQTT_KEY_EVENT_NAME] = eventKey.name
         data[MQTT_KEY_FIRST] = eventKey.first
         data[MQTT_KEY_SECOND] = eventKey.second
-        topic = self._getEventTopic(contextName, eventKey)
+        topic = self._getEventTopic(context, eventKey)
         if clear:
             self._mqtt.publish(topic, None, True)
         else:
             self._mqtt.publish(topic, json.dumps(data), False)
 
-    def _getEventTopic(self, contextName: str, eventKey: EventKey) -> str:
-        return f"{self._mqttEvents}/{contextName}/{eventKey.name}"
+    def _getEventTopic(self, context: Context, eventKey: EventKey) -> str:
+        topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}/"
+        eventId = context.nextEventIdMap.get(topicStr, 1)
+        context.nextEventIdMap[topicStr] = eventId + 1
+        return f"{topicStr}{eventId}"
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
         match = self._topicRe.match(msg.topic)
