@@ -55,6 +55,7 @@ class EventKey:
 class EventValue:
     firstTimestamp: float = 0.0
     lastTimestamp: float = 0.0
+    triggered: bool = False
 
 
 @dataclass
@@ -94,11 +95,11 @@ class InteractionTracker:
     def checkForEvents(self):
         with self._lock:
             for key, context in self._contexts.items():
-                print(f"{context.objectMap}")
                 objList = [trackedObj.obj for trackedObj in context.objectMap.values()]
-                idList = [id for id in context.objectMap.keys()]
                 events = context.checker.getEvents(objList)
 
+                # Track events that were not triggered
+                missedEvents = set(context.events.keys())
                 for event in events:
                     eventKey: EventKey = EventKey(name=event.event.name,
                                                   first=event.first.label,
@@ -108,7 +109,25 @@ class InteractionTracker:
                         trackedEvent = EventValue()
                         trackedEvent.firstTimestamp = time.time()
                         context.events[eventKey] = trackedEvent
+                    else:
+                        if eventKey in missedEvents:
+                            missedEvents.remove(eventKey)
+                        else:
+                            print(f"{eventKey} was not in missedEvents")
+
+                        if not trackedEvent.triggered and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
+                            print(f"Triggered event {eventKey}")
+                            trackedEvent.triggered = True
                     trackedEvent.lastTimestamp = time.time()
+
+                # Check for expired events
+                for eventKey in missedEvents:
+                    event = context.events[eventKey]
+                    eventConfig = self._contextConfig[eventKey.name]
+                    if time.time() > event.lastTimestamp + float(eventConfig["expire_time"]):
+                        if event.triggered:
+                            print(f"Expired event {eventKey}")
+                        context.events.pop(eventKey)
 
                 if self._debug:
                     InteractionTracker.debugContext(context)

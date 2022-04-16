@@ -7,7 +7,8 @@ from trackerTools.bbox import BBox
 from . watchedObject import WatchedObject
 
 CONFIG_KEY_INTRCT_THRESH = "threshold"
-CONFIG_KEY_INTRCT_MIN_FRAMES = "min_frames"
+CONFIG_KEY_INTRCT_MIN_TIME = "min_time"
+CONFIG_KEY_INTRCT_EXPIRE_TIME = "expire_time"
 CONFIG_KEY_INTRCT_OBJ_A = "first"
 CONFIG_KEY_INTRCT_OBJ_B = "second"
 
@@ -16,7 +17,8 @@ CONFIG_KEY_INTRCT_OBJ_B = "second"
 class ConfiguredInteraction:
     name: str
     thresh: float
-    minFrames: int
+    minTime: int
+    expireTime: int
     listA: list[str] = field(default_factory=list)
     listB: list[str] = field(default_factory=list)
 
@@ -39,9 +41,11 @@ class ContextChecker:
         for event, eventInfo in config.items():
             listA = eventInfo[CONFIG_KEY_INTRCT_OBJ_A]
             listB = eventInfo[CONFIG_KEY_INTRCT_OBJ_B]
-            thresh = eventInfo[CONFIG_KEY_INTRCT_THRESH]
-            minFrames = eventInfo[CONFIG_KEY_INTRCT_MIN_FRAMES]
-            newConfig = ConfiguredInteraction(name=event, listA=listA, listB=listB, thresh=thresh, minFrames=minFrames)
+            thresh = eventInfo.get(CONFIG_KEY_INTRCT_THRESH, 0.7)
+            minTime = eventInfo.get(CONFIG_KEY_INTRCT_MIN_TIME, 5)
+            expireTime = eventInfo.get(CONFIG_KEY_INTRCT_EXPIRE_TIME, 5)
+            newConfig = ConfiguredInteraction(name=event, listA=listA, listB=listB,
+                                              thresh=thresh, minTime=minTime, expireTime=expireTime)
             self._events.append(newConfig)
 
     def getEvents(self, objects: list[WatchedObject]) -> list[EventInfo]:
