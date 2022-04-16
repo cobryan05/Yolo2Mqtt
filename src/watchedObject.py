@@ -11,6 +11,7 @@ class WatchedObject:
     KEY_LABEL: str = "label"
     KEY_CONF: str = "conf"
     KEY_AGE: str = "age"
+    KEY_OBJID: str = "objId"
     KEY_FRAMES_MISSING: str = "framesMissing"
     KEY_FRAMES_SEEN: str = "framesSeen"
     KEY_BBOX: str = "bbox"
@@ -27,7 +28,7 @@ class WatchedObject:
         conf: float
         bbox: BBox
 
-    def __init__(self, initialDetection: WatchedObject.Detection = None):
+    def __init__(self, objId: int = 0, initialDetection: WatchedObject.Detection = None):
         self._framesCnt: int = 0
         self._framesSeen: int = 0
         self._framesSinceSeen: int = 0
@@ -35,6 +36,7 @@ class WatchedObject:
         self._bestLabel: str = ""
         self._bestConf: float = 0.0
         self._lastBbox: BBox = BBox((0, 0, 0, 0))
+        self._objId: int = objId
         if initialDetection is not None:
             self.markSeen(initialDetection)
 
@@ -47,6 +49,7 @@ class WatchedObject:
                   WatchedObject.KEY_FRAMES_MISSING: self.framesSinceSeen,
                   WatchedObject.KEY_FRAMES_SEEN: self.framesSeen,
                   WatchedObject.KEY_AGE: self.age,
+                  WatchedObject.KEY_OBJID: self.objId,
                   WatchedObject.KEY_BBOX: self.bbox.asRX1Y1WH()
                   }
 
@@ -63,6 +66,7 @@ class WatchedObject:
         newObj._framesSinceSeen = value.get(WatchedObject.KEY_FRAMES_MISSING, 0)
         newObj._framesSeen = value.get(WatchedObject.KEY_FRAMES_SEEN, 0)
         newObj._framesCnt = value.get(WatchedObject.KEY_AGE, 0)
+        newObj._objId = value.get(WatchedObject.KEY_OBJID, 0)
         return newObj
 
     def markMissing(self):
@@ -95,7 +99,6 @@ class WatchedObject:
         bestConf = 0.0
         bestLabel = None
         bestTracker = None
-        bestBbox = None
 
         # Determine confidence this is the best label among tracked labels
         meanConfSum = sum([entry.tracker.avg*entry.tracker.n for entry in self._confDict.values()])
@@ -105,7 +108,6 @@ class WatchedObject:
                 bestConf = entry.conf
                 bestLabel = key
                 bestTracker = entry.tracker
-                bestBbox = entry.bbox
 
         # Now get overall confidence by multiplying the confidence that this
         # is the best label by the confidence of that label
@@ -118,6 +120,11 @@ class WatchedObject:
         if entry is not None:
             return entry.conf
         return 0.0
+
+    @property
+    def objId(self) -> int:
+        ''' Object ID '''
+        return self._objId
 
     @property
     def age(self) -> int:

@@ -49,7 +49,7 @@ class Yolo2Mqtt:
                                              imgSize=int(modelInfo['width']),
                                              labels=modelInfo['labels'])
 
-        self.watchers: dict[str, _WatcherInfo] = {}
+        self.watchers: dict[str, Watcher] = {}
         for key, cameraInfo in config.get("cameras", {}).items():
             source = Yolo2Mqtt.getSource(cameraInfo)
             if source is None:
@@ -77,23 +77,23 @@ class Yolo2Mqtt:
         for thread in threads:
             thread.join()
 
-    def _objAddedCallback(self, obj, key, userData, **kwargs):
+    def _objAddedCallback(self, obj, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(f"{userData.name}/{key}", obj.json(), retain=False)
+        self.mqtt.publish(f"{userData.name}/{obj.objId}", obj.json(), retain=False)
 
-    def _objRemovedCallback(self, obj, key, userData, **kwargs):
+    def _objRemovedCallback(self, obj, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(f"{userData.name}/{key}", None, retain=False)
+        self.mqtt.publish(f"{userData.name}/{obj.objId}", None, retain=False)
 
-    def _objUpdatedCallback(self, obj, key, userData, **kwargs):
+    def _objUpdatedCallback(self, obj, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(f"{userData.name}/{key}", obj.json(), retain=False)
+        self.mqtt.publish(f"{userData.name}/{obj.objId}", obj.json(), retain=False)
 
     @staticmethod
     def getSource(cameraConfig: dict):

@@ -40,9 +40,9 @@ class Watcher:
         self._objTracker: ObjectTracker = ObjectTracker(distThresh=BBOX_TRACKER_MAX_DIST_THRESH)
         self._userData = userData
         self._debug = debug
-        self._newObjSignal: Signal = Signal(args=['obj', 'key', 'userData'])
-        self._lostObjSignal: Signal = Signal(args=['obj', 'key', 'userData'])
-        self._updatedObjSignal: Signal = Signal(args=['obj', 'key', 'userData'])
+        self._newObjSignal: Signal = Signal(args=['obj', 'userData'])
+        self._lostObjSignal: Signal = Signal(args=['obj', 'userData'])
+        self._updatedObjSignal: Signal = Signal(args=['obj', 'userData'])
 
     def stop(self):
         self._stopEvent.set()
@@ -165,7 +165,7 @@ class Watcher:
 
                     if key in newObjs:
                         assert(trackedObj is None)
-                        trackedObj: WatchedObject = WatchedObject()
+                        trackedObj: WatchedObject = WatchedObject(objId=key)
                         for detectInfo in detBboxes:
                             trackedObj.markSeen(detectInfo.detection, newFrame=False)
                         forceInference = True
@@ -181,7 +181,7 @@ class Watcher:
                             forceInference = True
                             if trackedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
                                 print(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing")
-                                self._lostObjSignal.emit(obj=trackedObj, key=key, userData=self._userData)
+                                self._lostObjSignal.emit(obj=trackedObj, userData=self._userData)
                                 self._objTracker.removeBox(key)
                     else:
                         # A previously tracked object, ensure it isn't marked as lost and add any new detections
@@ -194,9 +194,9 @@ class Watcher:
                         if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
                             forceInference = True
                         elif trackedObj.age == NEW_OBJ_MIN_FRAME_CNT:
-                            self._newObjSignal.emit(obj=trackedObj, key=key, userData=self._userData)
+                            self._newObjSignal.emit(obj=trackedObj, userData=self._userData)
                         else:
-                            self._updatedObjSignal.emit(obj=trackedObj, key=key, userData=self._userData)
+                            self._updatedObjSignal.emit(obj=trackedObj, userData=self._userData)
 
                     print(f"{key} - {obj.metadata}")
 
