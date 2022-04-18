@@ -64,7 +64,9 @@ class MqttClient:
 
     def mqtt_connected_callback(self, client: mqtt.Client, userdata, flags, rc):
         print("MQTT server connect: {}".format(rc))
-        pass
+        # Reconnect subscriptions
+        for subTopic, subData in self._subMap.items():
+            self._mqtt.subscribe(subTopic)
 
     def mqtt_disconnect_callback(self, client: mqtt.Client, userdata, rc):
         print("Mqtt disconnected: {}".format(rc))
