@@ -59,7 +59,7 @@ class EventKey:
 class EventValue:
     firstTimestamp: float = 0.0
     lastTimestamp: float = 0.0
-    triggered: bool = False
+    published: bool = False
 
 
 @dataclass
@@ -68,7 +68,6 @@ class Context:
     checker: ContextChecker
     objectMap: dict[int, TrackedObject] = field(default_factory=dict)
     events: dict[EventKey, EventValue] = field(default_factory=dict)
-    nextEventIdMap: dict[str, int] = field(default_factory=dict)
 
 
 class InteractionTracker:
@@ -104,36 +103,39 @@ class InteractionTracker:
         with self._lock:
             for key, context in self._contexts.items():
                 objList = [trackedObj.obj for trackedObj in context.objectMap.values()]
-                events = context.checker.getEvents(objList)
+                newEvents = context.checker.getEvents(objList)
 
                 # Track events that were not triggered
-                missedEvents = set(context.events.keys())
-                for event in events:
+                allKeys: set[EventKey] = set(context.events.keys())
+                usedKeys: set[EventKey] = set()
+                for event in newEvents:
                     eventKey: EventKey = EventKey(name=event.event.name,
                                                   first=event.first.label,
                                                   second=event.second.label)
+                    # Don't process multiple detections of the same event
+                    if eventKey in usedKeys:
+                        continue
+                    usedKeys.add(eventKey)
+
                     trackedEvent = context.events.get(eventKey, None)
                     if trackedEvent is None:
                         trackedEvent = EventValue()
                         trackedEvent.firstTimestamp = time.time()
                         context.events[eventKey] = trackedEvent
                     else:
-                        if eventKey in missedEvents:
-                            missedEvents.remove(eventKey)
-                        else:
-                            print(f"{eventKey} was not in missedEvents")
-
-                        if not trackedEvent.triggered and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
-                            trackedEvent.triggered = True
+                        if not trackedEvent.published and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
+                            trackedEvent.published = True
                             self.publishEvent(context, eventKey)
                     trackedEvent.lastTimestamp = time.time()
 
                 # Check for expired events
-                for eventKey in missedEvents:
-                    event = context.events[eventKey]
+                for eventKey in allKeys.difference(usedKeys):
+                    trackedEvent = context.events.get(eventKey, None)
                     eventConfig = self._contextConfig[eventKey.name]
-                    if time.time() > event.lastTimestamp + float(eventConfig["expire_time"]):
-                        if event.triggered:
+
+                    # If this even expired then clear it from MQTT and remove it from the context
+                    if time.time() > trackedEvent.lastTimestamp + float(eventConfig["expire_time"]):
+                        if trackedEvent.published:
                             self.publishEvent(context, eventKey, clear=True)
                         context.events.pop(eventKey)
 
@@ -152,10 +154,8 @@ class InteractionTracker:
             self._mqtt.publish(topic, json.dumps(data), False)
 
     def _getEventTopic(self, context: Context, eventKey: EventKey) -> str:
-        topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}/"
-        eventId = context.nextEventIdMap.get(topicStr, 1)
-        context.nextEventIdMap[topicStr] = eventId + 1
-        return f"{topicStr}{eventId}"
+        topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}/{eventKey.first}/{eventKey.second}"
+        return topicStr
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
         match = self._topicRe.match(msg.topic)
