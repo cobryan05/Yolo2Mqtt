@@ -7,4 +7,4 @@ WORKDIR /app
 RUN git clone https://github.com/cobryan05/Yolo2Mqtt.git --recursive . && \
     pip install -r requirements.txt
 
-ENTRYPOINT ["python", "yolo2mqtt.py", "--config", "/config/config.json"]
+ENTRYPOINT ["bash", "./run.sh", "--config", "/config/config.json"]
