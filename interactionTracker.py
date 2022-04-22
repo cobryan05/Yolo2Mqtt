@@ -169,11 +169,11 @@ class InteractionTracker:
 
             if len(msg.payload) == 0:
                 context.objectMap.pop(objId, None)
-                print(f"Removed {objId}. Tracking {len(context.objectMap)} objects.")
+                print(f"{cameraName} Removed {objId}. Tracking {len(context.objectMap)} objects.")
             else:
                 objInfo = WatchedObject.fromJson(msg.payload.decode())
                 if objId not in context.objectMap:
-                    print(f"Added {objId}. Tracking {len(context.objectMap)} objects.")
+                    print(f"{cameraName} Added {objId}. Tracking {len(context.objectMap)} objects.")
                 context.objectMap[objId] = TrackedObject(obj=objInfo)
 
     @staticmethod
