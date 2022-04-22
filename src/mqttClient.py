@@ -45,8 +45,11 @@ class MqttClient:
     def disconnect(self):
         self._mqtt.disconnect()
 
-    def publish(self, topic: str, value: str, retain: bool = False):
-        publish_topic = "{}/{}".format(self._prefix, topic)
+    def publish(self, topic: str, value: str, retain: bool = False, absoluteTopic=False):
+        if absoluteTopic:
+            publish_topic = topic
+        else:
+            publish_topic = "{}/{}".format(self._prefix, topic)
         print("Publishing {} value of {}".format(publish_topic, value))
         self._mqtt.publish(publish_topic, value, retain=retain)
 

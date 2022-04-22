@@ -87,6 +87,11 @@ class InteractionTracker:
 
         self._mqtt.subscribe(f"{self._mqttDet}/#", self.mqttCallback)
 
+        haCfg = self._config.get("homeassistant", {})
+        self._discoveryEnabled = bool(haCfg.get("discoveryEnabled", False))
+        self._discoveryPrefix = haCfg.get("discovery_prefix", "homeassistant").rstrip("/")
+        self._discoveryConfigDone: set[str] = set()
+        self._entityPrefix = haCfg.get("entity_prefix", "TRACKER")
         self._contextConfig: dict = self._config.get(CONFIG_KEY_INTRCTS, {})
         self._contexts: dict[str, Context] = {}
         self._topicRe: re.Pattern = re.compile(
@@ -124,6 +129,8 @@ class InteractionTracker:
                         if not trackedEvent.published and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
                             trackedEvent.published = True
                             self.publishEvent(context, eventKey)
+                            if self._discoveryEnabled:
+                                self.publishDiscoveryEvent(context, eventKey, "ON")
                     trackedEvent.lastTimestamp = time.time()
 
                 # Check for expired events
@@ -135,6 +142,8 @@ class InteractionTracker:
                     if time.time() > trackedEvent.lastTimestamp + float(eventConfig["expire_time"]):
                         if trackedEvent.published:
                             self.publishEvent(context, eventKey, clear=True)
+                            if self._discoveryEnabled:
+                                self.publishDiscoveryEvent(context, eventKey, "OFF")
                         context.events.pop(eventKey)
 
                 if self._debug:
@@ -149,6 +158,21 @@ class InteractionTracker:
             self._mqtt.publish(topic, None, True)
         else:
             self._mqtt.publish(topic, json.dumps(data), False)
+
+    def publishDiscoveryEvent(self, context: Context, eventKey: EventKey, state: str):
+        entityId = f"{self._entityPrefix}-{context.name}-{eventKey.name}-{'-'.join(eventKey.slots)}"
+        mqttConfigTopic = f"{self._discoveryPrefix}/binary_sensor/{entityId}"
+        stateTopic = f"{mqttConfigTopic}/state"
+        if entityId not in self._discoveryConfigDone:
+            self._discoveryConfigDone.add(entityId)
+            configTopic = f"{mqttConfigTopic}/config"
+            friendlyName = f"{self._entityPrefix} - [{eventKey.name}] [{context.name}] [{'|'.join(eventKey.slots)}]"
+            entityCfg = {"name": friendlyName, "friendly_name": friendlyName,
+                         "unique_id": entityId, "state_topic": stateTopic}
+            self._mqtt.publish(configTopic, json.dumps(entityCfg), retain=False, absoluteTopic=True)
+        self._mqtt.publish(stateTopic, state, retain=False, absoluteTopic=True)
+
+        configTopic = f"{mqttConfigTopic}/config"
 
     def _getEventTopic(self, context: Context, eventKey: EventKey) -> str:
 
