@@ -23,8 +23,7 @@ from src.watcher import Watcher
 # fmt: on
 
 MQTT_KEY_EVENT_NAME = "name"
-MQTT_KEY_FIRST = "first"
-MQTT_KEY_SECOND = "second"
+MQTT_KEY_SLOTS = "slots"
 
 CONFIG_KEY_INTRCTS = "interactions"
 
@@ -45,14 +44,13 @@ class TrackedLabel:
 @dataclass
 class EventKey:
     name: str
-    first: str
-    second: str
+    slots: list[str]
 
     def __hash__(self):
         return hash(str(self))
 
     def __eq__(self, other):
-        return self.name == other.name and self.first == other.first and self.second == other.second
+        return hash(self) == hash(other)
 
 
 @dataclass
@@ -109,9 +107,9 @@ class InteractionTracker:
                 allKeys: set[EventKey] = set(context.events.keys())
                 usedKeys: set[EventKey] = set()
                 for event in newEvents:
+                    slotLabels = [obj.label for obj in event.slotsObjs]
                     eventKey: EventKey = EventKey(name=event.event.name,
-                                                  first=event.first.label,
-                                                  second=event.second.label)
+                                                  slots=slotLabels)
                     # Don't process multiple detections of the same event
                     if eventKey in usedKeys:
                         continue
@@ -145,8 +143,7 @@ class InteractionTracker:
     def publishEvent(self, context: Context, eventKey: EventKey, clear: bool = False):
         data = {}
         data[MQTT_KEY_EVENT_NAME] = eventKey.name
-        data[MQTT_KEY_FIRST] = eventKey.first
-        data[MQTT_KEY_SECOND] = eventKey.second
+        data[MQTT_KEY_SLOTS] = eventKey.slots
         topic = self._getEventTopic(context, eventKey)
         if clear:
             self._mqtt.publish(topic, None, True)
@@ -154,7 +151,8 @@ class InteractionTracker:
             self._mqtt.publish(topic, json.dumps(data), False)
 
     def _getEventTopic(self, context: Context, eventKey: EventKey) -> str:
-        topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}/{eventKey.first}/{eventKey.second}"
+
+        topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}/{'/'.join(eventKey.slots)}"
         return topicStr
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):

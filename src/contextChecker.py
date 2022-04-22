@@ -9,8 +9,7 @@ from . watchedObject import WatchedObject
 CONFIG_KEY_INTRCT_THRESH = "threshold"
 CONFIG_KEY_INTRCT_MIN_TIME = "min_time"
 CONFIG_KEY_INTRCT_EXPIRE_TIME = "expire_time"
-CONFIG_KEY_INTRCT_OBJ_A = "first"
-CONFIG_KEY_INTRCT_OBJ_B = "second"
+CONFIG_KEY_INTRCT_SLOTS = "slots"
 
 
 @dataclass
@@ -19,13 +18,12 @@ class ConfiguredInteraction:
     thresh: float
     minTime: int
     expireTime: int
-    listA: list[str] = field(default_factory=list)
-    listB: list[str] = field(default_factory=list)
+    slots: list[list[str]] = field(default_factory=list)
 
 
 @dataclass
 class OverlapInfo:
-    index_pair: tuple[int, int]
+    idxs: list[int]
     ios: float
 
 
@@ -33,39 +31,57 @@ class ContextChecker:
     @dataclass
     class EventInfo:
         event: ConfiguredInteraction
-        first: WatchedObject
-        second: WatchedObject
+        slotsObjs: list[WatchedObject]
 
     def __init__(self, config: dict[str, dict]):
         self._events: list[ConfiguredInteraction] = []
         for event, eventInfo in config.items():
-            listA = eventInfo[CONFIG_KEY_INTRCT_OBJ_A]
-            listB = eventInfo[CONFIG_KEY_INTRCT_OBJ_B]
+            slots = eventInfo[CONFIG_KEY_INTRCT_SLOTS]
             thresh = eventInfo.get(CONFIG_KEY_INTRCT_THRESH, 0.7)
             minTime = eventInfo.get(CONFIG_KEY_INTRCT_MIN_TIME, 5)
             expireTime = eventInfo.get(CONFIG_KEY_INTRCT_EXPIRE_TIME, 5)
-            newConfig = ConfiguredInteraction(name=event, listA=listA, listB=listB,
-                                              thresh=thresh, minTime=minTime, expireTime=expireTime)
+            newConfig = ConfiguredInteraction(name=event, slots=slots, thresh=thresh,
+                                              minTime=minTime, expireTime=expireTime)
             self._events.append(newConfig)
 
     def getEvents(self, objects: list[WatchedObject]) -> list[EventInfo]:
+
+        # Recursively return list of all possible slot filling combinations
+        def findMatches(overlapIdxs: list[list[int]], slots: list[list[str]], maxRecurse: int = 100) -> list[list[int]]:
+            assert(len(overlapIdxs) == len(slots))
+            if maxRecurse == 0:
+                raise RecursionError()
+
+            ret = []
+            slot = slots[0]
+            for enumIdx, overlapIdx in enumerate(overlapIdxs):
+                obj = objects[overlapIdx]
+                if obj.label in slot:
+                    # This was the final match
+                    if len(overlapIdxs) == 1:
+                        ret.append([overlapIdx])
+                    else:
+                        overlapIdxLeft = overlapIdxs.copy()
+                        overlapIdxLeft.pop(enumIdx)
+                        matches = findMatches(overlapIdxs=overlapIdxLeft, slots=slots[1:], maxRecurse=maxRecurse-1)
+
+                        for matchList in matches:
+                            ret.append([overlapIdx] + matchList)
+            return ret
+
+        # TODO: Support multiple overlaps
         triggeredEvents: list[ContextChecker.EventInfo] = []
         overlaps = ContextChecker.getOverlaps([obj.bbox for obj in objects])
         for overlap in overlaps:
-            idxA, idxB = overlap.index_pair
-            objA = objects[idxA]
-            objB = objects[idxB]
+            overlapIdxs = overlap.idxs
 
+            # Match up overlaps to any configured events
             for event in self._events:
-                if objA.label in event.listA and objB.label in event.listB:
-                    objs = (objA, objB)
-                elif objA.label in event.listB and objB.label in event.listA:
-                    objs = (objB, objA)
-                else:
-                    objs = None
-                if objs:
+                matches = findMatches(overlapIdxs, event.slots)
+                for match in matches:
+                    objList = [objects[idx] for idx in match]
                     eventInfo: ContextChecker.EventInfo = ContextChecker.EventInfo(
-                        event=event, first=objs[0], second=objs[1])
+                        event=event, slotsObjs=objList)
                     triggeredEvents.append(eventInfo)
 
         return triggeredEvents
@@ -83,7 +99,7 @@ class ContextChecker:
         overlaps: list[OverlapInfo] = []
         intersects = np.where(retMatrix != 0.0)
         for idxPair in zip(intersects[0], intersects[1]):
-            overlaps.append(OverlapInfo(idxPair, retMatrix[idxPair[0]][idxPair[1]]))
+            overlaps.append(OverlapInfo(list(idxPair), retMatrix[idxPair[0]][idxPair[1]]))
         return overlaps
 
     @staticmethod
