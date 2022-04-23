@@ -4,7 +4,10 @@ FROM anibali/pytorch:1.10.2-nocuda
 
 WORKDIR /app
 
-RUN git clone https://github.com/cobryan05/Yolo2Mqtt.git --recursive . && \
-    pip install -r requirements.txt
+COPY . .
+
+RUN pip install -r requirements.txt
+# RUN git clone https://github.com/cobryan05/Yolo2Mqtt.git --recursive . && \
+#     pip install -r requirements.txt
 
 ENTRYPOINT ["bash", "./run.sh", "--config", "/config/config.json"]
