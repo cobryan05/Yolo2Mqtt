@@ -163,14 +163,14 @@ class InteractionTracker:
         entityId = f"{self._entityPrefix}-{context.name}-{eventKey.name}-{'-'.join(eventKey.slots)}"
         mqttConfigTopic = f"{self._discoveryPrefix}/binary_sensor/{entityId}"
         stateTopic = f"{mqttConfigTopic}/state"
+        self._mqtt.publish(stateTopic, state, retain=True, absoluteTopic=True)
         if entityId not in self._discoveryConfigDone:
             self._discoveryConfigDone.add(entityId)
             configTopic = f"{mqttConfigTopic}/config"
             friendlyName = f"{self._entityPrefix} - [{eventKey.name}] [{context.name}] [{'|'.join(eventKey.slots)}]"
             entityCfg = {"name": friendlyName, "friendly_name": friendlyName,
                          "unique_id": entityId, "state_topic": stateTopic}
-            self._mqtt.publish(configTopic, json.dumps(entityCfg), retain=False, absoluteTopic=True)
-        self._mqtt.publish(stateTopic, state, retain=False, absoluteTopic=True)
+            self._mqtt.publish(configTopic, json.dumps(entityCfg), retain=True, absoluteTopic=True)
 
         configTopic = f"{mqttConfigTopic}/config"
 
