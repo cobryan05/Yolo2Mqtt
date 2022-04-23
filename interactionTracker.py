@@ -160,7 +160,7 @@ class InteractionTracker:
             self._mqtt.publish(topic, json.dumps(data), False)
 
     def publishDiscoveryEvent(self, context: Context, eventKey: EventKey, state: str):
-        entityId = f"{self._entityPrefix}-{context.name}-{eventKey.name}-{'-'.join(eventKey.slots)}"
+        entityId = self._createEntityId(context, eventKey)
         mqttConfigTopic = f"{self._discoveryPrefix}/binary_sensor/{entityId}"
         stateTopic = f"{mqttConfigTopic}/state"
         self._mqtt.publish(stateTopic, state, retain=True, absoluteTopic=True)
@@ -174,8 +174,17 @@ class InteractionTracker:
 
         configTopic = f"{mqttConfigTopic}/config"
 
-    def _getEventTopic(self, context: Context, eventKey: EventKey) -> str:
+    def _createEntityId(self, context: Context, eventKey: EventKey) -> str:
+        # Remove dashes and underscores from names
+        charsToRemove = ['-', '_']
+        replaceDict = {ord(x): '' for x in charsToRemove}
+        contextName = context.name.translate(replaceDict)
+        eventName = eventKey.name.translate(replaceDict)
+        slotsNames = '-'.join([slot.translate(replaceDict) for slot in eventKey.slots])
 
+        return f"{self._entityPrefix}-{contextName}-{eventName}-{slotsNames}"
+
+    def _getEventTopic(self, context: Context, eventKey: EventKey) -> str:
         topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}/{'/'.join(eventKey.slots)}"
         return topicStr
 
