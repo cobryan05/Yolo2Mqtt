@@ -1,6 +1,7 @@
 import sys
 import pathlib
 import os
+import logging
 import json
 import argparse
 import threading
@@ -25,6 +26,9 @@ CONFIG_KEY_VIDEO_PATH = "video-path"
 CONFIG_KEY_USER = "user"
 CONFIG_KEY_PWD = "password"
 
+logging.basicConfig(stream=sys.stdout)
+logger = logging.getLogger("Watcher")
+
 
 class Yolo2Mqtt:
     @dataclass
@@ -32,6 +36,9 @@ class Yolo2Mqtt:
         name: str
 
     def __init__(self, args: argparse.Namespace):
+        if args.verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
+
         config: dict = json.load(open(args.config))
 
         mqttCfg = config.get("mqtt", {})
@@ -40,7 +47,7 @@ class Yolo2Mqtt:
         mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt").rstrip('/')
         self._mqttDet = mqttCfg.get("detections", "detections").rstrip('/')
 
-        print(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
+        logging.info("Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
 
         self.mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
                                            broker_port=mqttPort, prefix=mqttPrefix)
@@ -55,7 +62,7 @@ class Yolo2Mqtt:
         for key, cameraInfo in config.get("cameras", {}).items():
             source = Yolo2Mqtt.getSource(cameraInfo)
             if source is None:
-                print("Couldn't create source for [{key}]")
+                logging.error("Couldn't create source for [{key}]")
                 continue
             modelName = cameraInfo.get("model", None)
             model = self.models[modelName]
@@ -68,7 +75,7 @@ class Yolo2Mqtt:
             watcher.connectUpdatedObjSignal(self._objUpdatedCallback)
             self.watchers[key] = watcher
 
-        print(f"Starting {len(self.watchers)} watchers...")
+        logging.info(f"Starting {len(self.watchers)} watchers...")
         threads: list[threading.Thread] = []
         for key, watcher in self.watchers.items():
             thread = threading.Thread(target=watcher.run, name=key)
@@ -123,6 +130,7 @@ def parseArgs():
     parser.add_argument('--config', help="Configuration file",
                         required=False, default="config.json")
     parser.add_argument('--debug', help="Show labeled images", action='store_true', default=False)
+    parser.add_argument('--verbose', '-v', help="Verbose", action='store_true', default=False)
 
     return parser.parse_args()
 

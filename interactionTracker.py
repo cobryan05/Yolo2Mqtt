@@ -1,6 +1,7 @@
 import json
 import argparse
 import cv2
+import logging
 import numpy as np
 import time
 import paho.mqtt.client as mqtt
@@ -29,6 +30,9 @@ CONFIG_KEY_INTRCTS = "interactions"
 
 RE_GROUP_CAMERA = "camera"
 RE_GROUP_OBJID = "objectId"
+
+logging.basicConfig(stream=sys.stdout)
+logger = logging.getLogger("InteractionTracker")
 
 
 @dataclass
@@ -70,6 +74,9 @@ class Context:
 
 class InteractionTracker:
     def __init__(self, args: argparse.Namespace):
+        if args.verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
+
         self._config: dict = json.load(open(args.config))
         self._debug = args.debug
         self._lock: Lock = Lock()
@@ -80,7 +87,7 @@ class InteractionTracker:
         mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt/").rstrip('/)')
         self._mqttEvents = mqttCfg.get("events", "events").rstrip('/')
         self._mqttDet = mqttCfg.get("detections", "detections").rstrip('/')
-        print(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
+        logger.info(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
 
         self._mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
                                             broker_port=mqttPort, prefix=mqttPrefix)
@@ -202,11 +209,11 @@ class InteractionTracker:
 
             if len(msg.payload) == 0:
                 context.objectMap.pop(objId, None)
-                print(f"{cameraName} Removed {objId}. Tracking {len(context.objectMap)} objects.")
+                logger.info(f"{cameraName} Removed {objId}. Tracking {len(context.objectMap)} objects.")
             else:
                 objInfo = WatchedObject.fromJson(msg.payload.decode())
                 if objId not in context.objectMap:
-                    print(f"{cameraName} Added {objId}. Tracking {len(context.objectMap)} objects.")
+                    logger.info(f"{cameraName} Added {objId}. Tracking {len(context.objectMap)} objects.")
                 context.objectMap[objId] = TrackedObject(obj=objInfo)
 
     @staticmethod
@@ -227,6 +234,7 @@ def parseArgs():
     parser.add_argument('--config', help="Configuration file",
                         required=False, default="config.json")
     parser.add_argument('--debug', help="Show labeled images", action='store_true', default=False)
+    parser.add_argument('--verbose', '-v', help="Verbose", action='store_true', default=False)
 
     return parser.parse_args()
 

@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from threading import Event
 import cv2
+import logging
+import sys
 import numpy as np
-import math
 import time
 from signalslot import Signal
 
@@ -25,6 +26,9 @@ NEW_OBJ_MIN_FRAME_CNT = 5  # How many frames must a new object be present in bef
 BBOX_TRACKER_MAX_DIST_THRESH = 0.5  # Percent of image a box can move and still be matched
 MAX_DETECT_INTERVAL = 10  # Maximum amount of frames without full detection
 MIN_CONF_THRESH = 0.1  # Minimum confidence threshold for display
+
+logging.basicConfig(stream=sys.stdout)
+logger = logging.getLogger("Watcher")
 
 
 class Watcher:
@@ -66,7 +70,7 @@ class Watcher:
         return self._updatedObjSignal.disconnect(slot)
 
     def run(self):
-        print(f"Starting Watcher with [{self._source}], refreshing every {self._delay} seconds")
+        logger.info(f"Starting Watcher with [{self._source}], refreshing every {self._delay} seconds")
 
         if self._debug:
             dbgWin = f"DebugWindow {self._source}"
@@ -91,7 +95,7 @@ class Watcher:
                 img = self._source.getNextFrame()
                 fetchTimeStats.addValue(time.time() - startTime)
             except Exception as e:
-                print(f"Exception getting image for {self._source}: {str(e)}")
+                logger.error("Exception getting image for {self._source}: {str(e)}")
                 continue
 
             # First try object tracking on the new image
@@ -106,7 +110,7 @@ class Watcher:
 
                 startTime = time.time()
                 # If tracking lost an object then run yolo
-                print("Running inference")
+                logger.debug("Running inference")
                 yoloRes = self._model.runInference(img=img)
                 runDetectCntdwn = MAX_DETECT_INTERVAL
 
@@ -174,13 +178,13 @@ class Watcher:
                     elif key in lostObjs:
                         # If it was lost before reaching the minimum frame count then remove it
                         if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
-                            print(f"{trackedObj.label} lost before minimum frame count")
+                            logger.debug(f"{trackedObj.label} lost before minimum frame count")
                             self._objTracker.removeBox(key)
                         else:
                             trackedObj.markMissing()
                             forceInference = True
                             if trackedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
-                                print(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing")
+                                logger.debug(f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing")
                                 self._lostObjSignal.emit(obj=trackedObj, userData=self._userData)
                                 self._objTracker.removeBox(key)
                     else:
@@ -198,7 +202,7 @@ class Watcher:
                         else:
                             self._updatedObjSignal.emit(obj=trackedObj, userData=self._userData)
 
-                    print(f"{key} - {obj.metadata}")
+                    logger.debug(f"{key} - {obj.metadata}")
 
                 inferTimeStats.addValue(time.time() - startTime)
 
@@ -219,10 +223,10 @@ class Watcher:
                 cv2.imshow(dbgWin, dbgImg)
                 cv2.waitKey(1)
 
-            print(f"---End of frame {frameCnt}---")
+            logger.debug(f"---End of frame {frameCnt}---")
             frameCnt += 1
 
-        print("Exit")
+        logger.info("Exit")
 
     @ staticmethod
     def drawTrackerOnImage(img: np.array, tracker: BBoxTracker.Tracker, color: tuple[int, int, int] = (255, 255, 255)):

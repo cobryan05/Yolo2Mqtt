@@ -1,8 +1,13 @@
 import paho.mqtt.client as mqtt
 import time
+import sys
+import logging
 
 from typing import Callable
 from dataclasses import dataclass
+
+logging.basicConfig(stream=sys.stdout)
+logger = logging.getLogger("MqttClient")
 
 
 class MqttClient:
@@ -32,7 +37,7 @@ class MqttClient:
                 break
             except Exception as e:
                 remaining_tries -= 1
-                print("Failed to connect to broker: {}.  {} retries remaining.".format(str(e), remaining_tries))
+                logger.warning("Failed to connect to broker: {}.  {} retries remaining.".format(str(e), remaining_tries))
                 if remaining_tries == 0:
                     raise
                 time.sleep(MqttClient.CONNECTION_RETRY_DELAY)
@@ -40,7 +45,7 @@ class MqttClient:
 
     def __del__(self):
         self.disconnect()
-        print("Deleting mqtt client from MQTT broker")
+        logger.debug("Deleting mqtt client from MQTT broker")
 
     def disconnect(self):
         self._mqtt.disconnect()
@@ -50,7 +55,7 @@ class MqttClient:
             publish_topic = topic
         else:
             publish_topic = "{}/{}".format(self._prefix, topic)
-        print("Publishing {} value of {}".format(publish_topic, value))
+        logger.debug("Publishing {} value of {}".format(publish_topic, value))
         self._mqtt.publish(publish_topic, value, retain=retain)
 
     def subscribe(self, topic: str, callback: Callable[[str], None]):
@@ -66,18 +71,18 @@ class MqttClient:
         self._subMap.pop(topic)
 
     def mqtt_connected_callback(self, client: mqtt.Client, userdata, flags, rc):
-        print("MQTT server connect: {}".format(rc))
+        logger.info("MQTT server connect: {}".format(rc))
         # Reconnect subscriptions
         for subTopic, subData in self._subMap.items():
             self._mqtt.subscribe(subTopic)
 
     def mqtt_disconnect_callback(self, client: mqtt.Client, userdata, rc):
-        print("Mqtt disconnected: {}".format(rc))
+        logger.info("Mqtt disconnected: {}".format(rc))
         if rc != 0:
-            print("Attempting reconnect...")
+            logger.info("Attempting reconnect...")
             self._mqtt.reconnect()
         else:
-            print("Stopping Mqtt loop")
+            logger.debug("Stopping Mqtt loop")
             self._mqtt.loop_stop()
 
     def mqtt_message_callback(self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
