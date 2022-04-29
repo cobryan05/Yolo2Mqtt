@@ -2,12 +2,17 @@
 FROM anibali/pytorch:1.10.2-nocuda
 # FROM anibali/pytorch:1.10.2-cuda11.3
 
-WORKDIR /app
+# Install ffmpeg into the pytorch image
+RUN sudo apt-get update && \
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg
 
+# Install python requirements
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# Now set up this app
+WORKDIR /app
 COPY . .
 
-RUN pip install -r requirements.txt
-# RUN git clone https://github.com/cobryan05/Yolo2Mqtt.git --recursive . && \
-#     pip install -r requirements.txt
 
 ENTRYPOINT ["bash", "./run.sh", "--config", "/config/config.json"]
