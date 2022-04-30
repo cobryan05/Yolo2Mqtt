@@ -95,7 +95,7 @@ class Watcher:
                 img = self._source.getNextFrame()
                 fetchTimeStats.addValue(time.time() - startTime)
             except Exception as e:
-                logger.error("Exception getting image for {self._source}: {str(e)}")
+                logger.error(f"Exception getting image for {self._source}: {str(e)}")
                 continue
 
             # First try object tracking on the new image

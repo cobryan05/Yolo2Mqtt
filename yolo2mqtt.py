@@ -16,11 +16,13 @@ from trackerTools.yoloInference import YoloInference
 from src.mqttClient import MqttClient
 from src.watchedObject import WatchedObject
 from src.watcher import Watcher
+from src.imgSources.rtspSource import RtspSource
 from src.imgSources.urlSource import UrlSource
 from src.imgSources.videoSource import VideoSource
 # fmt: on
 
 
+CONFIG_KEY_RTSP_URL = "rtsp-url"
 CONFIG_KEY_SNAPSHOT_URL = "snapshot-url"
 CONFIG_KEY_VIDEO_PATH = "video-path"
 CONFIG_KEY_USER = "user"
@@ -110,6 +112,8 @@ class Yolo2Mqtt:
     @staticmethod
     def getSource(cameraConfig: dict):
         ''' Returns a source for the given camera config'''
+        if CONFIG_KEY_RTSP_URL in cameraConfig:
+            return RtspSource(cameraConfig[CONFIG_KEY_RTSP_URL])
         if CONFIG_KEY_VIDEO_PATH in cameraConfig:
             return VideoSource(cameraConfig[CONFIG_KEY_VIDEO_PATH])
 
