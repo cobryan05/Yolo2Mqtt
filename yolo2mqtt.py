@@ -9,11 +9,14 @@ import time
 from dataclasses import dataclass
 
 # fmt: off
-submodules_dir = os.path.join(pathlib.Path(__file__).parent.resolve(), "submodules")
+scriptDir = pathlib.Path(__file__).parent.resolve()
+submodules_dir = os.path.join(scriptDir, "submodules")
+sys.path.append( scriptDir )
 sys.path.append(submodules_dir)
 sys.path.append(os.path.join(submodules_dir, "yolov5"))
 from trackerTools.yoloInference import YoloInference
 from src.mqttClient import MqttClient
+from src.rtspSimpleServer import RtspSimpleServer
 from src.watchedObject import WatchedObject
 from src.watcher import Watcher
 from src.imgSources.rtspSource import RtspSource
@@ -23,6 +26,7 @@ from src.imgSources.videoSource import VideoSource
 
 
 CONFIG_KEY_RTSP_URL = "rtsp-url"
+CONFIG_KEY_REWIND_BUFFER = "rewind-buffer"
 CONFIG_KEY_SNAPSHOT_URL = "snapshot-url"
 CONFIG_KEY_VIDEO_PATH = "video-path"
 CONFIG_KEY_USER = "user"
@@ -54,6 +58,14 @@ class Yolo2Mqtt:
         self.mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
                                            broker_port=mqttPort, prefix=mqttPrefix)
 
+        rtspCfg = config.get("rtspSimpleServer", {})
+        if len(rtspCfg) > 0:
+            apiHost = rtspCfg.get('apiHost', None)
+            apiPort = rtspCfg.get('apiPort', 9997)
+            self._rtspApi = RtspSimpleServer(apiHost=apiHost, apiPort=apiPort)
+        else:
+            self._rtspApi = None
+
         self.models: dict[str, YoloInference] = {}
         for key, modelInfo in config.get("models", {}).items():
             self.models[key] = YoloInference(weights=modelInfo['path'],
@@ -62,7 +74,7 @@ class Yolo2Mqtt:
 
         self.watchers: dict[str, Watcher] = {}
         for key, cameraInfo in config.get("cameras", {}).items():
-            source = Yolo2Mqtt.getSource(cameraInfo)
+            source = self.getSource(name=key, cameraConfig=cameraInfo)
             if source is None:
                 logging.error("Couldn't create source for [{key}]")
                 continue
@@ -109,11 +121,13 @@ class Yolo2Mqtt:
     def _getDetTopic(self, obj: WatchedObject, userData: _WatcherUserData) -> str:
         return f"{self._mqttDet}/{userData.name}/{obj.objId}"
 
-    @staticmethod
-    def getSource(cameraConfig: dict):
+    def getSource(self, name: str,  cameraConfig: dict):
         ''' Returns a source for the given camera config'''
         if CONFIG_KEY_RTSP_URL in cameraConfig:
-            return RtspSource(cameraConfig[CONFIG_KEY_RTSP_URL])
+            rtspApi = self._rtspApi
+            rtspRewindBuf = cameraConfig.get(CONFIG_KEY_REWIND_BUFFER, 5)
+            return RtspSource(name=name, rtspUrl=cameraConfig[CONFIG_KEY_RTSP_URL], rtspApi=self._rtspApi, rewindBufSec=rtspRewindBuf)
+
         if CONFIG_KEY_VIDEO_PATH in cameraConfig:
             return VideoSource(cameraConfig[CONFIG_KEY_VIDEO_PATH])
 

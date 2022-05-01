@@ -13,15 +13,28 @@ logger = logging.getLogger("rtspSimpleServer")
 
 class RtspSimpleServer:
 
-    def __init__(self, apiUrl: str = "http://localhost:9997"):
-        self._url: str = apiUrl
-
+    def __init__(self, apiHost: str = "localhost", apiPort: int = 9997):
+        self._host = apiHost
+        self._apiPort = apiPort
         try:
             self._config = self.GetConfig()
+            self._rtspPort = int(self._config.get("rtspAddress", ":8554").lstrip(':'))
         except:
-            logger.error("Failed to get config from {apiUrl}")
+            logger.error("Failed to get config from {self.apiUrl}")
             raise
         logger.debug(f"{self._config}")
+
+    @property
+    def hostname(self) -> str:
+        return self._host
+
+    @property
+    def apiUrl(self) -> str:
+        return f"http://{self.hostname}:{self._apiPort}"
+
+    @property
+    def rtspProxyUrl(self) -> str:
+        return f"rtsp://{self.hostname}:{self._rtspPort}"
 
     def GetConfig(self) -> dict:
         ''' returns the configuration '''
@@ -81,9 +94,9 @@ class RtspSimpleServer:
         return self._Post(f"v1/config/paths/remove/{name}", kwargs)
 
     def _Get(self, endpoint: str) -> dict:
-        resp = requests.get(f"{self._url}/{endpoint}")
+        resp = requests.get(f"{self.apiUrl}/{endpoint}")
         return json.loads(resp.content.decode())
 
     def _Post(self, endpoint: str, payload: dict = None) -> bool:
-        resp = requests.post(f"{self._url}/{endpoint}", json=(payload if payload is not None else {}))
+        resp = requests.post(f"{self.apiUrl}/{endpoint}", json=(payload if payload is not None else {}))
         return resp.ok
