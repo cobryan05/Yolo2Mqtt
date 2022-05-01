@@ -79,8 +79,19 @@ class MqttClient:
     def mqtt_disconnect_callback(self, client: mqtt.Client, userdata, rc):
         logger.info("Mqtt disconnected: {}".format(rc))
         if rc != 0:
-            logger.info("Attempting reconnect...")
-            self._mqtt.reconnect()
+            remaining_tries = MqttClient.CONNECTION_RETRIES
+            while True:
+                try:
+                    logger.info("Attempting reconnect...")
+                    self._mqtt.reconnect()
+                    break
+                except Exception as e:
+                    remaining_tries -= 1
+                    logger.warning("Failed to connect to broker: {}.  {} retries remaining.".format(
+                        str(e), remaining_tries))
+                    if remaining_tries == 0:
+                        raise
+                    time.sleep(MqttClient.CONNECTION_RETRY_DELAY)
         else:
             logger.debug("Stopping Mqtt loop")
             self._mqtt.loop_stop()
