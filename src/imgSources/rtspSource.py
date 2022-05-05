@@ -3,7 +3,7 @@ import cv2
 import logging
 import numpy as np
 import sys
-import urllib.request
+import time
 
 from collections.abc import Iterator
 from threading import Thread, Event, Lock
@@ -55,12 +55,18 @@ class RtspSource(Source):
 
     def _captureThread(self):
         logger.info(f"RTSP capture thread started for {self._name}")
+        minRetryTime = 0.05
+        maxRetryTime = 30
+        retryTime = minRetryTime
         while not self._stopEvent.is_set():
             with self._lock:
-                if not self._vid.grab():
-                    logger.warning(f"{self._name}: Failed to grab frame")
-                else:
+                if self._vid.grab():
+                    retryTime = minRetryTime
                     self._frameAvail.set()
+                else:
+                    logger.warning(f"{self._name}: Failed to grab frame")
+                    time.sleep(retryTime)
+                    retryTime = min(maxRetryTime, retryTime*2)
 
     def getNextFrame(self) -> np.array:
         frame = None
