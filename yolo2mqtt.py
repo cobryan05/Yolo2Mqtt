@@ -53,7 +53,7 @@ class Yolo2Mqtt:
         mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt").rstrip('/')
         self._mqttDet = mqttCfg.get("detections", "detections").rstrip('/')
 
-        logging.info("Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
+        logging.info(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
 
         self.mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
                                            broker_port=mqttPort, prefix=mqttPrefix)
