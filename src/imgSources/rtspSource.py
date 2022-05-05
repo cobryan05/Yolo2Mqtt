@@ -20,7 +20,15 @@ class RtspSource(Source):
     def __init__(self, name: str, rtspUrl: str, rtspApi: RtspSimpleServer = None, rewindBufSec: int = 0):
         ''' RtspSimpleServer will be configured to host proxy stream for rtspUrl '''
         self._name = name
-        self._vid = RtspSource._getCapture(name, rtspUrl, rtspApi, rewindBufSec)
+
+        # Attempt to proxy through RtspSimpleServer, otherwise just direct connect
+        self._rtspUrl = RtspSource._getProxyUrl(name, rtspApi, rtspUrl)
+        if self._rtspUrl is None:
+            self._rtspUrl = rtspUrl
+        else:
+            time.sleep(0.25)  # Give proxy a chance to initialize
+
+        self._vid: cv2.VideoCapture = self._getCap()
         self._stopEvent: Event = Event()
         self._frameAvail: Event = Event()
         self._rtspApi = rtspApi
@@ -41,17 +49,18 @@ class RtspSource(Source):
     def __repr__(self):
         return f"RtspSource [{self._name}]"
 
-    @staticmethod
-    def _getCapture(name: str, rtspUrl: str, rtspApi: RtspSimpleServer, rewindBufSec: int) -> cv2.VideoCapture:
-        cap: cv2.VideoCapture = None
+    def _getCap(self) -> cv2.VideoCapture:
+        ''' Returns CV2 video capture object for RTSP stream '''
+        return cv2.VideoCapture(self._rtspUrl, cv2.CAP_FFMPEG)
 
-        # Set up proxy if available
+    @staticmethod
+    def _getProxyUrl(name: str, rtspApi: RtspSimpleServer, rtspUrl: str) -> str:
         if rtspApi is not None:
             proxiedName = f"{name}_proxied"
+            rtspApi.RemoveConfig(proxiedName)  # Kick any other streamer off
             rtspApi.AddConfig(proxiedName, source=rtspUrl)
-            rtspUrl = f"{rtspApi.rtspProxyUrl}/{proxiedName}"
-        cap = cv2.VideoCapture(rtspUrl, cv2.CAP_FFMPEG)
-        return cap
+            return f"{rtspApi.rtspProxyUrl}/{proxiedName}"
+        return None
 
     def _captureThread(self):
         logger.info(f"RTSP capture thread started for {self._name}")
@@ -60,13 +69,17 @@ class RtspSource(Source):
         retryTime = minRetryTime
         while not self._stopEvent.is_set():
             with self._lock:
-                if self._vid.grab():
-                    retryTime = minRetryTime
-                    self._frameAvail.set()
-                else:
-                    logger.warning(f"{self._name}: Failed to grab frame. Retrying in {retryTime}s")
-                    time.sleep(retryTime)
-                    retryTime = min(maxRetryTime, retryTime*2)
+                hasFrame = self._vid.grab()
+
+            if hasFrame:
+                retryTime = minRetryTime
+                self._frameAvail.set()
+            else:
+                logger.warning(f"{self._name}: Failed to grab frame. Retrying in {retryTime}s")
+                if not self._vid.isOpened():
+                    self._vid = self._getCap()
+                time.sleep(retryTime)
+                retryTime = min(maxRetryTime, retryTime*2)
 
     def getNextFrame(self) -> np.array:
         frame = None
