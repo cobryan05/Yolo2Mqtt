@@ -99,4 +99,6 @@ class RtspSimpleServer:
 
     def _Post(self, endpoint: str, payload: dict = None) -> bool:
         resp = requests.post(f"{self.apiUrl}/{endpoint}", json=(payload if payload is not None else {}))
+        if not resp.ok:
+            logger.warning(f"Post to {endpoint} returned {resp.status_code}: {resp.reason}")
         return resp.ok
