@@ -64,7 +64,7 @@ class RtspSource(Source):
                     retryTime = minRetryTime
                     self._frameAvail.set()
                 else:
-                    logger.warning(f"{self._name}: Failed to grab frame")
+                    logger.warning(f"{self._name}: Failed to grab frame. Retrying in {retryTime}s")
                     time.sleep(retryTime)
                     retryTime = min(maxRetryTime, retryTime*2)
 
