@@ -25,9 +25,9 @@ class RtspSource(Source):
         self._frameAvail: Event = Event()
         self._rtspApi = rtspApi
         self._rtspRewindSec = rewindBufSec
+        self._lock = Lock()
         self._thread: Thread = Thread(target=self._captureThread, name="RtspCaptureThread")
         self._thread.start()
-        self._lock = Lock()
 
     def __del__(self):
         logger.info(f"Destroying RtspSource {self._name}")
