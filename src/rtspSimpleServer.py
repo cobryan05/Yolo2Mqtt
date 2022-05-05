@@ -19,8 +19,8 @@ class RtspSimpleServer:
         try:
             self._config = self.GetConfig()
             self._rtspPort = int(self._config.get("rtspAddress", ":8554").lstrip(':'))
-        except:
-            logger.error("Failed to get config from {self.apiUrl}")
+        except Exception as e:
+            logger.error("Failed to get config from {self.apiUrl}: {e}")
             raise
         logger.debug(f"{self._config}")
 

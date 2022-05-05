@@ -24,8 +24,10 @@ class RtspSource(Source):
         # Attempt to proxy through RtspSimpleServer, otherwise just direct connect
         self._rtspUrl = RtspSource._getProxyUrl(name, rtspApi, rtspUrl)
         if self._rtspUrl is None:
+            logger.info(f"RtspSource using [{rtspUrl}]")
             self._rtspUrl = rtspUrl
         else:
+            logger.info(f"Proxying [{rtspUrl}] as [{self._rtspUrl}]")
             time.sleep(0.25)  # Give proxy a chance to initialize
 
         self._vid: cv2.VideoCapture = self._getCap()

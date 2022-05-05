@@ -59,11 +59,11 @@ class Yolo2Mqtt:
                                            broker_port=mqttPort, prefix=mqttPrefix)
 
         rtspCfg = config.get("rtspSimpleServer", {})
-        if len(rtspCfg) > 0:
-            apiHost = rtspCfg.get('apiHost', None)
-            apiPort = rtspCfg.get('apiPort', 9997)
+        apiHost = rtspCfg.get("apiHost", "localhost")
+        apiPort = rtspCfg.get("apiPort", 9997)
+        try:
             self._rtspApi = RtspSimpleServer(apiHost=apiHost, apiPort=apiPort)
-        else:
+        except Exception as e:
             self._rtspApi = None
 
         self.models: dict[str, YoloInference] = {}
