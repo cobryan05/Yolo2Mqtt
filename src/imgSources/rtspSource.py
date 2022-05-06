@@ -45,8 +45,7 @@ class RtspSource(Source):
         self._thread.join()
 
         if self._rtspApi is not None:
-            proxiedName = f"{self._name}_proxied"
-            self._rtspApi.RemoveConfig(proxiedName)
+            self._rtspApi.RemoveConfig(self._name)
 
     def __repr__(self):
         return f"RtspSource [{self._name}]"
@@ -58,10 +57,9 @@ class RtspSource(Source):
     @staticmethod
     def _getProxyUrl(name: str, rtspApi: RtspSimpleServer, rtspUrl: str) -> str:
         if rtspApi is not None:
-            proxiedName = f"{name}_proxied"
-            rtspApi.RemoveConfig(proxiedName)  # Kick any other streamer off
-            rtspApi.AddConfig(proxiedName, source=rtspUrl)
-            return f"{rtspApi.rtspProxyUrl}/{proxiedName}"
+            rtspApi.RemoveConfig(name)  # Kick any other streamer off
+            rtspApi.AddConfig(name, source=rtspUrl)
+            return f"{rtspApi.rtspProxyUrl}/{name}"
         return None
 
     def _captureThread(self):
