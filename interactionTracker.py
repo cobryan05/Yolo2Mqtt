@@ -167,7 +167,7 @@ class InteractionTracker:
         if entityId not in self._discoveryPublished:
             self._discoveryPublished.add(entityId)
             configTopic = f"{mqttConfigTopic}/config"
-            friendlyName = f"{self._entityPrefix} - [{eventKey.name}] [{context.name}] [{'|'.join(eventKey.slots)}]"
+            friendlyName = f"{self._config.homeAssistant.entityPrefix} - [{eventKey.name}] [{context.name}] [{'|'.join(eventKey.slots)}]"
             entityCfg = {"name": friendlyName, "friendly_name": friendlyName,
                          "unique_id": entityId, "state_topic": stateTopic}
             self._mqtt.publish(configTopic, json.dumps(entityCfg), retain=True, absoluteTopic=True)
