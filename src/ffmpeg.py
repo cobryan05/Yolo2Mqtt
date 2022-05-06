@@ -1,6 +1,8 @@
 ''' Helper class to run FFMPEG'''
 
 import logging
+import os
+import signal
 import subprocess
 import sys
 
@@ -41,7 +43,10 @@ class Ffmpeg:
 
         Returns ffmpeg's retcode, or none if timeout is 0 and the process did not immediately exit '''
         if self._proc.returncode is None:
+            # TODO: Figure out how to get FFMPEG to stop
+            os.kill(self._proc.pid, signal.SIGINT)
             self._proc.kill()
+            self._proc.terminate()
             if timeout is not None:
                 self.wait(None if timeout == -1 else timeout)
         return self._proc.returncode
@@ -49,4 +54,5 @@ class Ffmpeg:
     def _runFfmpeg(self, params: list[str]):
         cmdline = [Ffmpeg._ffmpegPath]
         cmdline.extend(params)
-        self._proc = subprocess.Popen(cmdline, shell=True)
+        logger.debug(f"{cmdline}")
+        self._proc = subprocess.Popen(cmdline)

@@ -7,7 +7,8 @@ validKeys = ["mqtt", "address", "port", "prefix", "events", "detections",
              "homeAssistant", "discoveryEnabled", "discoveryPrefix", "entityPrefix",
              "interactions", "slots", "threshold", "minTime", "expireTime",
              "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password",
-             "models", "path", "width", "labels"]
+             "models", "path", "width", "labels",
+             "recordingManager", "mediaRoot"]
 
 
 @dataclass
@@ -17,6 +18,11 @@ class Mqtt:
     prefix: str = "myhome/ObjectTrackers"
     events: str = "events"
     detections: str = "detections"
+
+
+@dataclass
+class RecordingManager:
+    mediaRoot: str
 
 
 @dataclass
@@ -75,6 +81,9 @@ class Config:
         for key, cfg in config.get("interactions", {}).items():
             self._interactions[key] = Interaction(**Config.validKeys(cfg))
 
+        cfg = config.get("recordingManager", {})
+        self._recordingManager: RecordingManager = RecordingManager(**Config.validKeys(cfg))
+
         cfg = config.get("homeAssistant", {})
         self._homeAssistant: HomeAssistant = HomeAssistant(**Config.validKeys(cfg))
         self._homeAssistant.discoveryPrefix = self.homeAssistant.discoveryPrefix.rstrip('/')
@@ -99,6 +108,10 @@ class Config:
     @property
     def models(self) -> dict[str, Model]:
         return self._models
+
+    @property
+    def recordingManager(self) -> RecordingManager:
+        return self._recordingManager
 
     @property
     def cameras(self) -> dict[str, Camera]:
