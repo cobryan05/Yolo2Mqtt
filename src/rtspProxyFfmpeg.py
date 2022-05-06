@@ -1,47 +1,38 @@
 ''' Publish a stream to RtspSimpleServer using FFmpeg '''
 ''' Not really useful except for sample code '''
 
+
 import logging
-import subprocess
-import os
 import sys
-from dataclasses import dataclass
+import time
 from .rtspSimpleServer import RtspSimpleServer
+from .ffmpeg import Ffmpeg
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RtspProxyFfmpeg")
 
 
 class RtspProxyFfmpeg:
-    def __init__(self, publishName: str, srcRtspUrl: str, rtspApi: RtspSimpleServer, ffmpegPath: str = "/usr/bin/ffmpeg"):
+    def __init__(self, publishName: str, srcRtspUrl: str, rtspApi: RtspSimpleServer):
         self._publishName: str = publishName
         self._rtspApi: RtspSimpleServer = rtspApi
-
         self._srcUrl: str = srcRtspUrl
-        self._ffmpegPath: str = ffmpegPath
 
         # Remove anything existing delayed stream
         self._rtspApi.RemoveConfig(self._publishName)
-
         # Add a stream to the server and publish to it
         if self._rtspApi.AddConfig(self._publishName, source="publisher", sourceOnDemand=False):
-            self._runFfmpeg()
+            time.sleep(0.5)  # Give the server a bit before attempting to publish to it
 
-    def __del__(self):
-        self._proc.kill()
-        self._proc.wait()
+            self._ffmpeg = Ffmpeg(["-i", self._srcUrl,
+                                   "-rtsp_transport", "tcp",  # for some reason UDP was producing no output
+                                   "-codec", "copy",
+                                   "-f", "rtsp",
+                                   f"{self._rtspApi.rtspProxyUrl}/{self._publishName}"
+                                   ])
+
+    def stop(self, timeout: float = None):
+        self._ffmpeg.stop(timeout=timeout)
         self._rtspApi.RemoveConfig(self._publishName)
 
-    def _runFfmpeg(self):
-        cmdline = self._getFfmpegCmdline()
-        self._proc = subprocess.Popen(cmdline, shell=True)
-
-    def _getFfmpegCmdline(self) -> list[str]:
-        inputStream: str = self._srcUrl
-        outputStream: str = f"{self._rtspApi.rtspProxyUrl}/{self._publishName}"
-        return [self._ffmpegPath,
-                "-i", inputStream,
-                "-rtsp_transport", "tcp",  # for some reason UDP was producing no output
-                "-codec", "copy",
-                "-f", "rtsp",
-                outputStream
-                ]
+    def __del__(self):
+        self.stop()

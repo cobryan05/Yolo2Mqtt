@@ -11,6 +11,7 @@ from src.config import Config
 from src.mqttClient import MqttClient
 from src.rtspSimpleServer import RtspSimpleServer
 from src.rtspProxyFfmpeg import RtspProxyFfmpeg
+from src.ffmpeg import Ffmpeg
 # fmt: on
 
 RE_GROUP_CAMERA = "camera"
@@ -29,13 +30,12 @@ class RecordingManager:
         config: dict = json.load(open(args.config))
         self._config: Config = Config(config)
         self._debug = args.debug
+        Ffmpeg.setFFmpegPath(args.ffmpeg)
 
         self._rtsp = RtspSimpleServer(self._config.RtspSimpleServer.apiHost, self._config.RtspSimpleServer.apiPort)
-
         self._streams: list[RtspProxyFfmpeg] = []
         for name, cfg in self._config.cameras.items():
-            stream = RtspProxyFfmpeg(f"{name}_proxied", f"{self._rtsp.rtspProxyUrl}/{name}",
-                                     self._rtsp, ffmpegPath=args.ffmpeg)
+            stream = RtspProxyFfmpeg(f"{name}_proxied", f"{self._rtsp.rtspProxyUrl}/{name}",  self._rtsp)
             self._streams.append(stream)
 
         self._mqttEvents = self._config.Mqtt.events
@@ -53,6 +53,13 @@ class RecordingManager:
     def run(self):
         while True:
             time.sleep(1)
+
+    def stop(self):
+        for stream in self._streams:
+            stream.stop()
+
+    def __del__(self):
+        self.stop()
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
         match = self._topicRe.match(msg.topic)
@@ -82,3 +89,4 @@ def parseArgs():
 if __name__ == "__main__":
     recManager = RecordingManager(parseArgs())
     recManager.run()
+    recManager.stop()
