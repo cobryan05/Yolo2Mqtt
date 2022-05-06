@@ -74,7 +74,6 @@ class RecordingManager:
         filePath = os.path.join(self._config.recordingManager.mediaRoot, fileName)
 
         logger.info(f"Starting recording of {eventName} to file {fileName}")
-        cameraName = "loft"
         rtspUrl = f"{self._rtsp.rtspProxyUrl}/{cameraName}"
         self._activeRecs[eventName] = RtspRecorder(rtspUrl, filePath)
 
