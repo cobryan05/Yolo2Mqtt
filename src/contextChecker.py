@@ -5,20 +5,7 @@ from dataclasses import dataclass, field
 from trackerTools.bbox import BBox
 
 from . watchedObject import WatchedObject
-
-CONFIG_KEY_INTRCT_THRESH = "threshold"
-CONFIG_KEY_INTRCT_MIN_TIME = "min_time"
-CONFIG_KEY_INTRCT_EXPIRE_TIME = "expire_time"
-CONFIG_KEY_INTRCT_SLOTS = "slots"
-
-
-@dataclass
-class ConfiguredInteraction:
-    name: str
-    thresh: float
-    minTime: int
-    expireTime: int
-    slots: list[list[str]] = field(default_factory=list)
+from .config import Config, Interaction
 
 
 @dataclass
@@ -30,19 +17,12 @@ class OverlapInfo:
 class ContextChecker:
     @dataclass
     class EventInfo:
-        event: ConfiguredInteraction
+        name: str
+        event: Interaction
         slotsObjs: list[WatchedObject]
 
-    def __init__(self, config: dict[str, dict]):
-        self._events: list[ConfiguredInteraction] = []
-        for event, eventInfo in config.items():
-            slots = eventInfo[CONFIG_KEY_INTRCT_SLOTS]
-            thresh = eventInfo.get(CONFIG_KEY_INTRCT_THRESH, 0.7)
-            minTime = eventInfo.get(CONFIG_KEY_INTRCT_MIN_TIME, 5)
-            expireTime = eventInfo.get(CONFIG_KEY_INTRCT_EXPIRE_TIME, 5)
-            newConfig = ConfiguredInteraction(name=event, slots=slots, thresh=thresh,
-                                              minTime=minTime, expireTime=expireTime)
-            self._events.append(newConfig)
+    def __init__(self, interactions: dict[str, Interaction]):
+        self._interactions = interactions.copy()
 
     def getEvents(self, objects: list[WatchedObject]) -> list[EventInfo]:
 
@@ -76,12 +56,12 @@ class ContextChecker:
             overlapIdxs = overlap.idxs
 
             # Match up overlaps to any configured events
-            for event in self._events:
-                matches = findMatches(overlapIdxs, event.slots)
+            for key, interaction in self._interactions.items():
+                matches = findMatches(overlapIdxs, interaction.slots)
                 for match in matches:
                     objList = [objects[idx] for idx in match]
-                    eventInfo: ContextChecker.EventInfo = ContextChecker.EventInfo(
-                        event=event, slotsObjs=objList)
+                    eventInfo: ContextChecker.EventInfo = ContextChecker.EventInfo(name=key,
+                                                                                   event=interaction, slotsObjs=objList)
                     triggeredEvents.append(eventInfo)
 
         return triggeredEvents

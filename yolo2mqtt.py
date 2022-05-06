@@ -15,6 +15,7 @@ sys.path.append( scriptDir )
 sys.path.append(submodules_dir)
 sys.path.append(os.path.join(submodules_dir, "yolov5"))
 from trackerTools.yoloInference import YoloInference
+from src.config import Config, Camera
 from src.mqttClient import MqttClient
 from src.rtspSimpleServer import RtspSimpleServer
 from src.watchedObject import WatchedObject
@@ -23,14 +24,6 @@ from src.imgSources.rtspSource import RtspSource
 from src.imgSources.urlSource import UrlSource
 from src.imgSources.videoSource import VideoSource
 # fmt: on
-
-
-CONFIG_KEY_RTSP_URL = "rtsp-url"
-CONFIG_KEY_REWIND_BUFFER = "rewind-buffer"
-CONFIG_KEY_SNAPSHOT_URL = "snapshot-url"
-CONFIG_KEY_VIDEO_PATH = "video-path"
-CONFIG_KEY_USER = "user"
-CONFIG_KEY_PWD = "password"
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Watcher")
@@ -46,41 +39,37 @@ class Yolo2Mqtt:
             logging.getLogger().setLevel(logging.DEBUG)
 
         config: dict = json.load(open(args.config))
+        self._config: Config = Config(config)
 
-        mqttCfg = config.get("mqtt", {})
-        mqttAddress = mqttCfg.get("address", "localhost")
-        mqttPort = mqttCfg.get("port", 1883)
-        mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt").rstrip('/')
-        self._mqttDet = mqttCfg.get("detections", "detections").rstrip('/')
+        self._mqttDet = self._config.Mqtt.detections
 
-        logging.info(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
+        print(f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
 
-        self.mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
-                                           broker_port=mqttPort, prefix=mqttPrefix)
+        self._mqtt: MqttClient = MqttClient(broker_address=self._config.Mqtt.address,
+                                            broker_port=self._config.Mqtt.port,
+                                            prefix=self._config.Mqtt.prefix)
 
-        rtspCfg = config.get("rtspSimpleServer", {})
-        apiHost = rtspCfg.get("apiHost", "localhost")
-        apiPort = rtspCfg.get("apiPort", 9997)
         try:
-            self._rtspApi = RtspSimpleServer(apiHost=apiHost, apiPort=apiPort)
+            self._rtspApi = RtspSimpleServer(apiHost=self._config.RtspSimpleServer.apiHost,
+                                             apiPort=self._config.RtspSimpleServer.apiPort)
         except Exception as e:
             self._rtspApi = None
 
-        self.models: dict[str, YoloInference] = {}
-        for key, modelInfo in config.get("models", {}).items():
-            self.models[key] = YoloInference(weights=modelInfo['path'],
-                                             imgSize=int(modelInfo['width']),
-                                             labels=modelInfo['labels'])
+        self._models: dict[str, YoloInference] = {}
+        for key, modelInfo in self._config.models.items():
+            self._models[key] = YoloInference(weights=modelInfo.path,
+                                              imgSize=modelInfo.width,
+                                              labels=modelInfo.labels)
 
         self.watchers: dict[str, Watcher] = {}
-        for key, cameraInfo in config.get("cameras", {}).items():
+        for key, cameraInfo in self._config.cameras.items():
             source = self.getSource(name=key, cameraConfig=cameraInfo)
             if source is None:
                 logging.error("Couldn't create source for [{key}]")
                 continue
-            modelName = cameraInfo.get("model", None)
-            model = self.models[modelName]
-            refreshDelay = cameraInfo.get("refresh", 5)
+            modelName = cameraInfo.model
+            model = self._models[modelName]
+            refreshDelay = cameraInfo.refresh
             userData = Yolo2Mqtt._WatcherUserData(key)
             watcher: Watcher = Watcher(source=source, model=model, refreshDelay=refreshDelay,
                                        userData=userData, debug=args.debug)
@@ -104,37 +93,33 @@ class Yolo2Mqtt:
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(self._getDetTopic(obj, userData), obj.json(), retain=False)
+        self._mqtt.publish(self._getDetTopic(obj, userData), obj.json(), retain=False)
 
     def _objRemovedCallback(self, obj, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(self._getDetTopic(obj, userData), None, retain=False)
+        self._mqtt.publish(self._getDetTopic(obj, userData), None, retain=False)
 
     def _objUpdatedCallback(self, obj, userData, **kwargs):
         # SignalSlots doesn't support annotations
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
-        self.mqtt.publish(self._getDetTopic(obj, userData), obj.json(), retain=False)
+        self._mqtt.publish(self._getDetTopic(obj, userData), obj.json(), retain=False)
 
     def _getDetTopic(self, obj: WatchedObject, userData: _WatcherUserData) -> str:
         return f"{self._mqttDet}/{userData.name}/{obj.objId}"
 
-    def getSource(self, name: str,  cameraConfig: dict):
+    def getSource(self, name: str, cameraConfig: Camera):
         ''' Returns a source for the given camera config'''
-        if CONFIG_KEY_RTSP_URL in cameraConfig:
-            rtspApi = self._rtspApi
-            rtspRewindBuf = cameraConfig.get(CONFIG_KEY_REWIND_BUFFER, 5)
-            return RtspSource(name=name, rtspUrl=cameraConfig[CONFIG_KEY_RTSP_URL], rtspApi=self._rtspApi, rewindBufSec=rtspRewindBuf)
+        if cameraConfig.rtspUrl is not None:
+            return RtspSource(name=name, rtspUrl=cameraConfig.rtspUrl, rtspApi=self._rtspApi)
 
-        if CONFIG_KEY_VIDEO_PATH in cameraConfig:
-            return VideoSource(cameraConfig[CONFIG_KEY_VIDEO_PATH])
+        if cameraConfig.videoPath is not None:
+            return VideoSource(cameraConfig.videoPath)
 
-        if CONFIG_KEY_SNAPSHOT_URL in cameraConfig:
-            user = cameraConfig.get(CONFIG_KEY_USER, None)
-            pwd = cameraConfig.get(CONFIG_KEY_PWD, None)
-            return UrlSource(cameraConfig[CONFIG_KEY_SNAPSHOT_URL], user=user, password=pwd)
+        if cameraConfig.imageUrl is not None:
+            return UrlSource(cameraConfig.imageUrl, user=cameraConfig.username, password=cameraConfig.password)
 
         return None
 

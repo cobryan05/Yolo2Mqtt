@@ -17,6 +17,7 @@ from threading import Lock
 # fmt: off
 submodules_dir = os.path.join(pathlib.Path(__file__).parent.resolve(), "submodules")
 sys.path.append(submodules_dir)
+from src.config import Config
 from src.contextChecker import ContextChecker
 from src.mqttClient import MqttClient
 from src.watchedObject import WatchedObject
@@ -25,8 +26,6 @@ from src.watcher import Watcher
 
 MQTT_KEY_EVENT_NAME = "name"
 MQTT_KEY_SLOTS = "slots"
-
-CONFIG_KEY_INTRCTS = "interactions"
 
 RE_GROUP_CAMERA = "camera"
 RE_GROUP_OBJID = "objectId"
@@ -77,32 +76,26 @@ class InteractionTracker:
         if args.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
 
-        self._config: dict = json.load(open(args.config))
+        config: dict = json.load(open(args.config))
+        self._config: Config = Config(config)
         self._debug = args.debug
         self._lock: Lock = Lock()
 
-        mqttCfg = self._config.get("mqtt", {})
-        mqttAddress = mqttCfg.get("address", "localhost")
-        mqttPort = mqttCfg.get("port", 1883)
-        mqttPrefix = mqttCfg.get("prefix", "myhome/yolo2mqtt/").rstrip('/)')
-        self._mqttEvents = mqttCfg.get("events", "events").rstrip('/')
-        self._mqttDet = mqttCfg.get("detections", "detections").rstrip('/')
-        logger.info(f"Connecting to MQTT broker at {mqttAddress}:{mqttPort}...")
+        self._mqttEvents = self._config.Mqtt.events
+        self._mqttDet = self._config.Mqtt.detections
 
-        self._mqtt: MqttClient = MqttClient(broker_address=mqttAddress,
-                                            broker_port=mqttPort, prefix=mqttPrefix)
+        print(f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
+
+        self._mqtt: MqttClient = MqttClient(broker_address=self._config.Mqtt.address,
+                                            broker_port=self._config.Mqtt.port,
+                                            prefix=self._config.Mqtt.prefix)
 
         self._mqtt.subscribe(f"{self._mqttDet}/#", self.mqttCallback)
 
-        haCfg = self._config.get("homeassistant", {})
-        self._discoveryEnabled = bool(haCfg.get("discoveryEnabled", False))
-        self._discoveryPrefix = haCfg.get("discovery_prefix", "homeassistant").rstrip("/")
-        self._discoveryConfigDone: set[str] = set()
-        self._entityPrefix = haCfg.get("entity_prefix", "TRACKER")
-        self._contextConfig: dict = self._config.get(CONFIG_KEY_INTRCTS, {})
+        self._discoveryPublished: set[str] = set()
         self._contexts: dict[str, Context] = {}
         self._topicRe: re.Pattern = re.compile(
-            rf"{mqttPrefix}/{self._mqttDet}/(?P<{RE_GROUP_CAMERA}>[^/]+)/(?P<{RE_GROUP_OBJID}>.*)")
+            rf"{self._config.Mqtt.prefix}/{self._mqttDet}/(?P<{RE_GROUP_CAMERA}>[^/]+)/(?P<{RE_GROUP_OBJID}>.*)")
 
     def run(self):
         while True:
@@ -120,7 +113,7 @@ class InteractionTracker:
                 usedKeys: set[EventKey] = set()
                 for event in newEvents:
                     slotLabels = [obj.label for obj in event.slotsObjs]
-                    eventKey: EventKey = EventKey(name=event.event.name,
+                    eventKey: EventKey = EventKey(name=event.name,
                                                   slots=slotLabels)
                     # Don't process multiple detections of the same event
                     if eventKey in usedKeys:
@@ -136,20 +129,20 @@ class InteractionTracker:
                         if not trackedEvent.published and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
                             trackedEvent.published = True
                             self.publishEvent(context, eventKey)
-                            if self._discoveryEnabled:
+                            if self._config.homeAssistant.discoveryEnabled:
                                 self.publishDiscoveryEvent(context, eventKey, "ON")
                     trackedEvent.lastTimestamp = time.time()
 
                 # Check for expired events
                 for eventKey in allKeys.difference(usedKeys):
                     trackedEvent = context.events.get(eventKey, None)
-                    eventConfig = self._contextConfig[eventKey.name]
+                    interaction = self._config.interactions[eventKey.name]
 
                     # If this even expired then clear it from MQTT and remove it from the context
-                    if time.time() > trackedEvent.lastTimestamp + float(eventConfig["expire_time"]):
+                    if time.time() > trackedEvent.lastTimestamp + float(interaction.expireTime):
                         if trackedEvent.published:
                             self.publishEvent(context, eventKey, clear=True)
-                            if self._discoveryEnabled:
+                            if self._config.homeAssistant.discoveryEnabled:
                                 self.publishDiscoveryEvent(context, eventKey, "OFF")
                         context.events.pop(eventKey)
 
@@ -168,11 +161,11 @@ class InteractionTracker:
 
     def publishDiscoveryEvent(self, context: Context, eventKey: EventKey, state: str):
         entityId = self._createEntityId(context, eventKey)
-        mqttConfigTopic = f"{self._discoveryPrefix}/binary_sensor/{entityId}"
+        mqttConfigTopic = f"{self._config.homeAssistant.discoveryPrefix}/binary_sensor/{entityId}"
         stateTopic = f"{mqttConfigTopic}/state"
         self._mqtt.publish(stateTopic, state, retain=True, absoluteTopic=True)
-        if entityId not in self._discoveryConfigDone:
-            self._discoveryConfigDone.add(entityId)
+        if entityId not in self._discoveryPublished:
+            self._discoveryPublished.add(entityId)
             configTopic = f"{mqttConfigTopic}/config"
             friendlyName = f"{self._entityPrefix} - [{eventKey.name}] [{context.name}] [{'|'.join(eventKey.slots)}]"
             entityCfg = {"name": friendlyName, "friendly_name": friendlyName,
@@ -189,7 +182,7 @@ class InteractionTracker:
         eventName = eventKey.name.translate(replaceDict)
         slotsNames = '-'.join([slot.translate(replaceDict) for slot in eventKey.slots])
 
-        return f"{self._entityPrefix}-{contextName}-{eventName}-{slotsNames}"
+        return f"{self._config.homeAssistant.entityPrefix}-{contextName}-{eventName}-{slotsNames}"
 
     def _getEventTopic(self, context: Context, eventKey: EventKey) -> str:
         topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}/{'/'.join(eventKey.slots)}"
@@ -204,7 +197,7 @@ class InteractionTracker:
             context = self._contexts.get(cameraName, None)
             # New context?
             if context is None:
-                context = Context(name=cameraName, checker=ContextChecker(self._contextConfig))
+                context = Context(name=cameraName, checker=ContextChecker(self._config.interactions))
                 self._contexts[cameraName] = context
 
             if len(msg.payload) == 0:
