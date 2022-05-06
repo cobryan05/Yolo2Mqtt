@@ -43,7 +43,7 @@ class Yolo2Mqtt:
 
         self._mqttDet = self._config.Mqtt.detections
 
-        print(f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
+        logger.info(f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
 
         self._mqtt: MqttClient = MqttClient(broker_address=self._config.Mqtt.address,
                                             broker_port=self._config.Mqtt.port,
