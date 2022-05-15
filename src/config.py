@@ -6,7 +6,7 @@ validKeys = ["mqtt", "address", "port", "prefix", "events", "detections",
              "rtspSimpleServer", "apiHost", "apiPort",
              "homeAssistant", "discoveryEnabled", "discoveryPrefix", "entityPrefix",
              "interactions", "slots", "threshold", "minTime", "expireTime",
-             "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password",
+             "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec",
              "models", "path", "width", "labels",
              "recordingManager", "mediaRoot"]
 
@@ -55,6 +55,7 @@ class Camera:
     password: str = None
     model: str = "default"
     refresh: int = 1
+    rewindSec: int = 20
 
 
 @dataclass
