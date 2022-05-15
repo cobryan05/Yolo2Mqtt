@@ -88,11 +88,17 @@ class WatchedObject:
             detectionEntry = self._confDict.setdefault(detection.label, None)
             if detectionEntry is None:
                 detectionEntry = WatchedObject._ConfDictEntry(ValueStatTracker(), None, None)
+
+            self.updateBbox(detection.bbox)
+
             detectionEntry.tracker.addValue(detection.conf)
             detectionEntry.bbox = detection.bbox.copy()
-            self._lastBbox = detectionEntry.bbox
             self._confDict[detection.label] = detectionEntry
             self._recalculateBest()
+
+    def updateBbox(self, bbox: BBox):
+        ''' Updates the location of the watchedObject without updating any other information '''
+        self._lastBbox = bbox.copy()
 
     def _recalculateBest(self):
         ''' Recalculate the best label for this object '''

@@ -84,7 +84,8 @@ class Watcher:
         fetchTimeStats: ValueStatTracker = ValueStatTracker()
         trackTimeStats: ValueStatTracker = ValueStatTracker()
         inferTimeStats: ValueStatTracker = ValueStatTracker()
-        forceInference: bool = False
+        forceInference: bool = True  # First loop always runs inference
+
         while True:
             timeElapsed = time.time() - loopStart
             if self._stopEvent.wait(timeout=max(0, self._delay - timeElapsed)):
@@ -98,22 +99,37 @@ class Watcher:
                 logger.error(f"Exception getting image for {self._source}: {str(e)}")
                 continue
 
-            # First try object tracking on the new image
-            startTime = time.time()
-            trackedObjs, _, lostObjs, detectedKeys = self._objTracker.update(image=img)
-            trackTimeStats.addValue(time.time() - startTime)
-            runDetectCntdwn -= 1
-
-            yoloRes = None
-            if forceInference or runDetectCntdwn <= 0 or len(lostObjs) > 0:
-                forceInference = False
-
+            # Just run object tracking if not scheduled to run inference
+            runInference: bool = forceInference or runDetectCntdwn <= 0
+            if not runInference:
                 startTime = time.time()
-                # If tracking lost an object then run yolo
-                logger.debug("Running inference")
-                yoloRes = self._model.runInference(img=img)
+                trackedObjs, _, lostObjs, detectedKeys = self._objTracker.update(image=img)
+                trackTimeStats.addValue(time.time() - startTime)
+                runDetectCntdwn -= 1
+                # If an object was lost then run inference
+                if len(lostObjs) > 0:
+                    runInference = True
+                else:
+                    # If not going to run inference then be sure to update location of tracked objects.
+                    # TODO: Clean this up. It's a quick hack to just put this here
+                    for key, obj in trackedObjs.items():
+                        trackedObj: WatchedObject = obj.metadata.get(METAKEY_TRACKED_WATCHED_OBJ, None)
+                        if trackedObj.bbox != obj.bbox:
+                            trackedObj.updateBbox(obj.bbox)
+                            self._updatedObjSignal.emit(obj=trackedObj, userData=self._userData)
+
+            # Run inference if required
+            yoloRes = None
+            if runInference:
+                forceInference = False
                 runDetectCntdwn = MAX_DETECT_INTERVAL
 
+                # Run the image through the model
+                startTime = time.time()
+                logger.debug("Running inference")
+                yoloRes = self._model.runInference(img=img)
+
+                # Now merge any duplicate boxes from the inference
                 detBboxes: list[BBox] = []
                 metadata: list[WatchedObject.Detection] = []
                 SAME_BOX_DIST_THRESH = 0.03
@@ -138,6 +154,8 @@ class Watcher:
                         metadata.append({METAKEY_DETECTIONS: [detectInfo]})
 
                 def metaCompare(trackedInfo: tuple[BBox, dict], detectedInfo: tuple[BBox, dict]) -> float:
+                    ''' This function returns confidence that two objects are the same object.
+                        This will influence matching detected objects with already-tracked objects '''
                     trackedBbox, trackedMeta = trackedInfo
                     detectedBbox, detectMeta = detectedInfo
                     assert(METAKEY_DETECTIONS in detectMeta)
@@ -154,6 +172,7 @@ class Watcher:
                         bestLabelConf *= 0.5
                     return bestLabelConf
 
+                # Run the object tracker, updating it with the current inference detections
                 trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(image=img, detections=detBboxes,
                                                                                        metadata=metadata, metadataComp=metaCompare, mergeMetadata=True)
 
@@ -161,10 +180,10 @@ class Watcher:
                 for key, obj in trackedObjs.items():
                     trackedObj: WatchedObject = obj.metadata.get(METAKEY_TRACKED_WATCHED_OBJ, None)
 
-                    # Pop any detection info off that may be on the tracked object
+                    # Pop any temporary detection info off that may be on the tracked object
                     detBboxes: list[Watcher._DetectionInfo] = obj.metadata.pop(METAKEY_DETECTIONS, [])
                     if len(detBboxes) > 0:
-                        # Update objTracker with the 'detections removed' metadata
+                        # Update objTracker with the metadata from which we popped off the temporary detection info
                         self._objTracker.updateBox(key, metadata=obj.metadata)
 
                     if key in newObjs:
