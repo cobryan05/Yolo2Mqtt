@@ -57,6 +57,9 @@ class ContextChecker:
 
             # Match up overlaps to any configured events
             for key, interaction in self._interactions.items():
+                if overlap.ios < interaction.threshold:
+                    continue
+
                 matches = findMatches(overlapIdxs, interaction.slots)
                 for match in matches:
                     objList = [objects[idx] for idx in match]
