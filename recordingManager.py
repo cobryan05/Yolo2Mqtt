@@ -6,6 +6,7 @@
 import json
 import argparse
 import logging
+import itertools
 import os
 import paho.mqtt.client as mqtt
 import re
@@ -50,8 +51,9 @@ class StreamEventRecorder:
         self._stream: RtspProxyFfmpeg = delayedStream
         self._recorders: dict[str, EventFileWriter] = {}
 
-    def startEventRecording(self, eventName: str, outputDir: str):
+    def startEventRecording(self, eventName: str, outputDir: str) -> str:
         ''' Starts recording an event, or increments refCnt of an active recording of this event'''
+        ''' Returns the filename of the recorded event, or None if no recording started '''
         recording = self._recorders.get(eventName, None)
         if recording is not None:
             if recording.stopDelayTimer is not None:
@@ -60,7 +62,7 @@ class StreamEventRecorder:
             recording.refCnt += 1
             logger.info(
                 f"Extending recording of {eventName} from {self._stream.rtspUrl}. Refcnt is now {recording.refCnt}")
-            return
+            return None
 
         logger.info(f"Starting recording of {eventName} from {self._stream.rtspUrl}")
 
@@ -68,6 +70,7 @@ class StreamEventRecorder:
         fileName = f"{timestamp}__{eventName}.mkv"
         filePath = os.path.join(outputDir, fileName)
         self._recorders[eventName] = EventFileWriter(fileRecorder=RtspRecorder(self._stream.rtspUrl, filePath))
+        return filePath
 
     def stopEventRecording(self, eventName: str):
         ''' Decrements recording refCnt, and stops the stream if it reaches zero'''
@@ -162,7 +165,36 @@ class RecordingManager:
 
     @staticmethod
     def _createEventName(cameraName: str, eventName: str, slots: list[str]):
-        return f"{cameraName}__{eventName}__{slots.replace('/', '_')}"
+        return f"{cameraName}___{eventName}___{slots.replace('/', '__')}"
+
+    @staticmethod
+    def _splitEventName(eventName: str) -> tuple[str, str, list[str]]:
+        cameraName, eventName, slotsStr = eventName.split("___")
+        slots = slotsStr.split("__")
+        return cameraName, eventName, slots
+
+    @staticmethod
+    def _createSymlinks(eventName: str, videoPath: str, outputDir: str):
+        os.makedirs(outputDir, exist_ok=True)
+        cameraName, eventName, slots = RecordingManager._splitEventName(eventName)
+        videoName = os.path.basename(videoPath)
+        parts = [cameraName, eventName] + slots
+        symlinks = []
+        for permutation in itertools.permutations(parts):
+            curPath = outputDir
+            for part in permutation:
+                curPath = os.path.join(curPath, part)
+                symlinks.append(os.path.join(curPath, videoName))
+
+        try:
+            symlinks = sorted(set(symlinks))
+            for linkname in symlinks:
+                os.makedirs(os.path.dirname(linkname), exist_ok=True)
+                if not os.path.exists(linkname):
+                    relVidPath = os.path.relpath(videoPath, os.path.dirname(linkname))
+                    os.symlink(relVidPath, linkname)
+        except Exception as e:
+            logger.error(f"Failed to create symlinks for {videoPath}: {e}")
 
     def startRecordingEvent(self, cameraName: str, eventName: str):
         if cameraName not in self._recs:
@@ -172,7 +204,10 @@ class RecordingManager:
             return
 
         rec = self._recs[cameraName]
-        rec.startEventRecording(eventName=eventName, outputDir=self._config.recordingManager.mediaRoot)
+        videoPath = rec.startEventRecording(eventName=eventName, outputDir=self._config.recordingManager.mediaRoot)
+        if videoPath is not None and self._config.recordingManager.makeSymlinks:
+            RecordingManager._createSymlinks(eventName, videoPath, outputDir=os.path.join(
+                self._config.recordingManager.mediaRoot, "symlinks"))
 
     def stopRecordingEvent(self, cameraName: str, eventName: str):
         if cameraName not in self._recs:
