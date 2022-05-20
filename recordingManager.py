@@ -67,7 +67,7 @@ class StreamEventRecorder:
         logger.info(f"Starting recording of {eventName} from {self._stream.rtspUrl}")
 
         timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        fileName = f"{timestamp}__{eventName}.mkv"
+        fileName = f"{timestamp}___{eventName}.mkv"
         filePath = os.path.join(outputDir, fileName)
         self._recorders[eventName] = EventFileWriter(fileRecorder=RtspRecorder(self._stream.rtspUrl, filePath))
         return filePath
