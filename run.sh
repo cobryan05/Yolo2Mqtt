@@ -4,5 +4,5 @@
  python3 yolo2mqtt.py --verbose "$@" & \
  python3 interactionTracker.py "$@" & \
  sleep 60 && python3 recordingManager.py --verbose "$@" & \
- read
+ sleep infinity
   )
