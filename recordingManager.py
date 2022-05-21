@@ -17,9 +17,8 @@ from threading import Timer
 from src.config import Config
 from src.mqttClient import MqttClient
 from src.rtspSimpleServer import RtspSimpleServer
-from src.rtspProxyFfmpeg import RtspProxyFfmpeg
+from src.rtspDelayedProxy import RtspDelayedProxy
 from src.rtspRecorder import RtspRecorder
-from src.ffmpeg import Ffmpeg
 # fmt: on
 
 RE_GROUP_CAMERA = "camera"
@@ -47,9 +46,10 @@ class StreamEventRecorder:
         Delays stopping a recording, and will resume the same recording if the same
         event is received before the recording stop delay expires '''
 
-    def __init__(self, delayedStream: RtspProxyFfmpeg):
-        self._stream: RtspProxyFfmpeg = delayedStream
+    def __init__(self, delayedStream: RtspDelayedProxy, ffmpegCmd: str = "ffmpeg"):
+        self._stream: RtspDelayedProxy = delayedStream
         self._recorders: dict[str, EventFileWriter] = {}
+        self._ffmpegCmd = ffmpegCmd
 
     def startEventRecording(self, eventName: str, outputDir: str) -> str:
         ''' Starts recording an event, or increments refCnt of an active recording of this event'''
@@ -69,7 +69,8 @@ class StreamEventRecorder:
         timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
         fileName = f"{timestamp}___{eventName}.mkv"
         filePath = os.path.join(outputDir, fileName)
-        self._recorders[eventName] = EventFileWriter(fileRecorder=RtspRecorder(self._stream.rtspUrl, filePath))
+        self._recorders[eventName] = EventFileWriter(fileRecorder=RtspRecorder(
+            self._stream.rtspUrl, filePath, ffmpegCmd=self._ffmpegCmd))
         return filePath
 
     def stopEventRecording(self, eventName: str):
@@ -117,7 +118,6 @@ class RecordingManager:
 
         config: dict = json.load(open(args.config))
         self._config: Config = Config(config)
-        Ffmpeg.setFFmpegPath(args.ffmpeg)
 
         self._rtsp = RtspSimpleServer(
             self._config.RtspSimpleServer.apiHost, self._config.RtspSimpleServer.apiPort)
@@ -131,14 +131,15 @@ class RecordingManager:
         for cameraName, camera in self._config.cameras.items():
             if cameraName in rtspActiveStreams:
                 logger.info(f"Delaying {cameraName} by {camera.rewindSec}")
-                delayedStream = RtspProxyFfmpeg(
+                delayedStream = RtspDelayedProxy(
                     publishName=f"{cameraName}_delayed",
                     srcRtspUrl=f"{self._rtsp.rtspProxyUrl}/{cameraName}",
                     rtspApi=self._rtsp,
                     delay=camera.rewindSec,
-                    skipExisting=args.dbgSkipExistingDelay
+                    overwriteExisting=(False == args.dbgSkipExistingDelay),
+                    ffmpegCmd=args.ffmpeg
                 )
-                self._recs[cameraName] = StreamEventRecorder(delayedStream=delayedStream)
+                self._recs[cameraName] = StreamEventRecorder(delayedStream=delayedStream, ffmpegCmd=args.ffmpeg)
 
         logger.info(
             f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
@@ -243,7 +244,7 @@ def parseArgs():
     parser.add_argument('--verbose', '-v', help="Verbose",
                         action='store_true', default=False)
     parser.add_argument(
-        '--ffmpeg', help="Path to ffmpeg executable", default="/usr/bin/ffmpeg")
+        '--ffmpeg', help="Path to ffmpeg executable", default="ffmpeg")
     parser.add_argument(
         '--dbgSkipExistingDelay', action='store_true', help="If true, do not overwrite existing delayed streams", default=False)
     return parser.parse_args()

@@ -2,26 +2,28 @@
 
 
 import logging
+import os
+import signal
 import sys
 
-from .ffmpeg import Ffmpeg
+import ffmpeg
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("rtspRecorder")
 
 
 class RtspRecorder:
-    def __init__(self, rtspUrl: str, outputFile: str):
+    def __init__(self, rtspUrl: str, outputFile: str, ffmpegCmd: str = "ffmpeg"):
         self._srcUrl: str = rtspUrl
         self._outFile: str = outputFile
 
-        self._ffmpeg = Ffmpeg(["-i", self._srcUrl,
-                               "-rtsp_transport", "tcp",  # for some reason UDP was producing no output
-                               "-codec", "copy",
-                               outputFile
-                               ])
+        proc = ffmpeg.input(self._srcUrl, rtsp_transport="tcp")
+        proc = proc.output(outputFile, codec="copy")
+        self._proc = proc.run_async(cmd=ffmpegCmd, quiet=True)
 
     def stop(self, timeout: float = None):
-        self._ffmpeg.stop(timeout=timeout)
+        if self._proc is not None:
+            os.kill(self._proc.pid, signal.SIGINT)
+            self._proc = None
 
     def __del__(self):
         self.stop()

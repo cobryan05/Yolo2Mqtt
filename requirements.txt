@@ -8,3 +8,4 @@ Pillow==8.4.0
 signalslot==0.1.2
 matplotlib==3.4.3
 seaborn==0.11.2
+ffmpeg-python==0.2.0
