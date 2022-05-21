@@ -67,7 +67,7 @@ class StreamEventRecorder:
         logger.info(f"Starting recording of {eventName} from {self._stream.rtspUrl}")
 
         timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        fileName = f"{timestamp}___{eventName}.mkv"
+        fileName = f"{timestamp}___{eventName}.mp4"
         filePath = os.path.join(outputDir, fileName)
         self._recorders[eventName] = EventFileWriter(fileRecorder=RtspRecorder(
             self._stream.rtspUrl, filePath, ffmpegCmd=self._ffmpegCmd))
@@ -205,7 +205,8 @@ class RecordingManager:
             return
 
         rec = self._recs[cameraName]
-        videoPath = rec.startEventRecording(eventName=eventName, outputDir=self._config.recordingManager.mediaRoot)
+        videoPath = rec.startEventRecording(eventName=eventName, outputDir=os.path.join(
+            self._config.recordingManager.mediaRoot, "video"))
         if videoPath is not None and self._config.recordingManager.makeSymlinks:
             RecordingManager._createSymlinks(eventName, videoPath, outputDir=os.path.join(
                 self._config.recordingManager.mediaRoot, "symlinks"))
