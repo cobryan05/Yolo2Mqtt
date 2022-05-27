@@ -76,7 +76,7 @@ class RtspSource(Source):
                 self._frameAvail.set()
             else:
                 logger.warning(f"{self._name}: Failed to grab frame. Retrying in {retryTime}s")
-                if not self._vid.isOpened():
+                if True or not self._vid.isOpened():
                     self._vid = self._getCap()
                 time.sleep(retryTime)
                 retryTime = min(maxRetryTime, retryTime*2)

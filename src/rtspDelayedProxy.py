@@ -32,14 +32,7 @@ class RtspDelayedProxy:
         self._timer: Timer = None
         self._cmd = ffmpegCmd
         self._stopEvent: Event = Event()
-
-        streamExists = self._publishName in self._rtspApi.GetPaths().get("items", {})
-        if streamExists:
-            if overwriteExisting:
-                # Remove anything existing delayed stream
-                self._rtspApi.RemoveConfig(self._publishName)
-            else:
-                raise Exception(f"Stream {self._publishName} already exists on Rtsp server")
+        self._runId: int = 0
 
         publishUrl = f"{self._rtspApi.rtspProxyUrl}/{self._publishName}"
         self._ffmpegIn = ffmpeg.input(srcRtspUrl, rtsp_transport='tcp',
@@ -47,10 +40,7 @@ class RtspDelayedProxy:
         self._ffmpegOut = ffmpeg.input("pipe:").output(publishUrl, codec="copy", rtsp_transport="tcp", format="rtsp")
 
         # Add a stream to the server and publish to it
-        if self._rtspApi.AddConfig(self._publishName, source="publisher", sourceOnDemand=False):
-            # Give the server a bit before attempting to publish to it
-            self._timer = Timer(RtspDelayedProxy.PUBLISH_START_DELAY, self._ffmpegThreadFunc)
-            self._timer.start()
+        self._run( overwrite=overwriteExisting)
 
     def __del__(self):
         if self._timer is not None:
@@ -65,35 +55,77 @@ class RtspDelayedProxy:
     def delay(self) -> int:
         return self._delay
 
-    def _ffmpegThreadFunc(self):
+    def _run(self, overwrite: bool ):
+        streamExists = self._publishName in self._rtspApi.GetPaths().get("items", {})
+        if streamExists:
+            if overwrite:
+                # Remove anything existing delayed stream
+                self._rtspApi.RemoveConfig(self._publishName)
+            else:
+                raise Exception(f"Stream {self._publishName} already exists on Rtsp server")
+
+        # Add a stream to the server and publish to it
+        if self._rtspApi.AddConfig(self._publishName, source="publisher", sourceOnDemand=False):
+            # Increment the runId to stop any running threads
+            self._runId += 1
+            # Give the server a bit before attempting to publish to it
+            self._timer = Timer(RtspDelayedProxy.PUBLISH_START_DELAY, self._ffmpegThreadFunc, args=(self._runId,))
+            self._timer.start()
+
+
+    def _ffmpegThreadFunc(self, runId:int):
         @dataclass
         class DelayedPacket:
             data: bytes
             timestamp: float
+        BROKEN_PIPE_RETRY_CNT:int =5
 
         inProc = self._ffmpegIn.run_async(cmd=self._cmd, pipe_stdout=True)
         outProc = self._ffmpegOut.run_async(cmd=self._cmd, pipe_stdin=True)
         delayBuffer: deque[DelayedPacket] = deque()
-        while not self._stopEvent.is_set():
-            bytesRead = inProc.stdout.read1()
-            delayBuffer.append(DelayedPacket(data=bytesRead, timestamp=time.time() + self._delay))
-            while len(delayBuffer) > 0:
-                packet = delayBuffer[0]
-                if time.time() < packet.timestamp:
-                    break
-                delayBuffer.popleft()
-                outProc.stdin.write(packet.data)
+        retriesLeft = BROKEN_PIPE_RETRY_CNT
+        try:
+            while not self._stopEvent.is_set() and self._runId == runId:
+                bytesRead = inProc.stdout.read1()
+                if len(bytesRead) == 0:
+                    if retriesLeft == 0:
+                        raise BrokenPipeError(f"Failed to read from pipe {BROKEN_PIPE_RETRY_CNT} times")
+                    retriesLeft -= 1
+                    continue
 
-        os.kill(outProc.pid, signal.SIGINT)
-        os.kill(inProc.pid, signal.SIGINT)
-        self._rtspApi.RemoveConfig(self._publishName)
+                delayBuffer.append(DelayedPacket(data=bytesRead, timestamp=time.time() + self._delay))
+                while len(delayBuffer) > 0:
+                    packet = delayBuffer[0]
+                    if time.time() < packet.timestamp:
+                        break
+                    delayBuffer.popleft()
+                    outProc.stdin.write(packet.data)
+            self._rtspApi.RemoveConfig(self._publishName)
+        except BrokenPipeError as e:
+            logger.error(f"Stream failed! Retrying...")
+            self._run(overwrite=True)
+        except Exception as e:
+            logger.error(f"***********Unexpected Exception: {e}")
+            self._run(overwrite=True)
+
+        # TODO: This is really ugly and bad
+        try:
+            os.kill(outProc.pid, signal.SIGINT)
+            os.kill(inProc.pid, signal.SIGINT)
+            time.sleep(1)
+            os.kill(outProc.pid, signal.SIGTERM)
+            os.kill(inProc.pid, signal.SIGTERM)
+            time.sleep(1)
+            os.kill(outProc.pid, signal.SIGKILL)
+            os.kill(inProc.pid, signal.SIGKILL)
+        except Exception as e:
+            logger.error(f"Exception killing processes: {e}")
 
     def wait(self, timeout: float = None):
         ''' Waits for ffmpeg to stop.
 
         Raises subprocess.TimeoutExpired if the timeout is specified and expires '''
-        if not self._skipStreamReg:
-            self._proc.wait(timeout)
+        raise NotImplemented()
 
     def stop(self, timeout: float = None):
         ''' Stops the stream
