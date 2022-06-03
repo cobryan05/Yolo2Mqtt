@@ -48,6 +48,7 @@ class TrackedLabel:
 class EventKey:
     key: str
     slots: list[str]
+    objIds: list[int]
 
     def __hash__(self):
         return hash(str(self))
@@ -117,8 +118,10 @@ class InteractionTracker:
                 usedKeys: set[EventKey] = set()
                 for event in newEvents:
                     slotLabels = [obj.label for obj in event.slotsObjs]
+                    objIds = [obj.objId for obj in event.slotsObjs]
                     eventKey: EventKey = EventKey(key=event.name,
-                                                  slots=slotLabels)
+                                                  slots=slotLabels,
+                                                  objIds=objIds)
                     # Don't process multiple detections of the same event
                     if eventKey in usedKeys:
                         continue
