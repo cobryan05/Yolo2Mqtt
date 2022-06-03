@@ -136,8 +136,7 @@ class InteractionTracker:
                         if not trackedEvent.published and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
                             trackedEvent.published = True
                             self.publishEvent(context, eventKey)
-                            if self._config.homeAssistant.discoveryEnabled:
-                                self.publishDiscoveryEvent(context, eventKey, "ON")
+                            self.publishDiscoveryEvent(context, eventKey, "ON")
                     trackedEvent.lastTimestamp = time.time()
 
                 # Check for expired events
@@ -149,8 +148,7 @@ class InteractionTracker:
                     if time.time() > trackedEvent.lastTimestamp + float(interaction.expireTime):
                         if trackedEvent.published:
                             self.publishEvent(context, eventKey, clear=True)
-                            if self._config.homeAssistant.discoveryEnabled:
-                                self.publishDiscoveryEvent(context, eventKey, "OFF")
+                            self.publishDiscoveryEvent(context, eventKey, "OFF")
                         context.events.pop(eventKey)
 
                 if self._debug:
@@ -167,6 +165,8 @@ class InteractionTracker:
             self._mqtt.publish(topic, json.dumps(data), False)
 
     def publishDiscoveryEvent(self, context: Context, eventKey: EventKey, state: str):
+        if not self._config.homeAssistant.discoveryEnabled:
+            return
         entityId = self._createEntityId(context, eventKey)
         mqttConfigTopic = f"{self._config.homeAssistant.discoveryPrefix}/binary_sensor/{entityId}"
         stateTopic = f"{mqttConfigTopic}/state"
@@ -178,8 +178,6 @@ class InteractionTracker:
             entityCfg = {"name": friendlyName, "friendly_name": friendlyName,
                          "unique_id": entityId, "state_topic": stateTopic}
             self._mqtt.publish(configTopic, json.dumps(entityCfg), retain=True, absoluteTopic=True)
-
-        configTopic = f"{mqttConfigTopic}/config"
 
     def _createEntityId(self, context: Context, eventKey: EventKey) -> str:
         # Remove dashes and underscores from names
