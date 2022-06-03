@@ -3,6 +3,7 @@ import pathlib
 import os
 import logging
 import json
+import yaml
 import argparse
 import threading
 import time
@@ -38,7 +39,7 @@ class Yolo2Mqtt:
         if args.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
 
-        config: dict = json.load(open(args.config))
+        config: dict = yaml.load(open(args.config), yaml.Loader)
         self._config: Config = Config(config)
 
         self._mqttDet = self._config.Mqtt.detections
@@ -131,7 +132,7 @@ def parseArgs():
     parser = argparse.ArgumentParser(description="Run object tracking on image streams",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--config', help="Configuration file",
-                        required=False, default="config.json")
+                        required=False, default="config.yml")
     parser.add_argument('--debug', help="Show labeled images", action='store_true', default=False)
     parser.add_argument('--verbose', '-v', help="Verbose", action='store_true', default=False)
 

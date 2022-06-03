@@ -1,0 +1,168 @@
+# Commented out keys denote default values. Not all settings have default values
+
+# An external MQTT server is required
+mqtt:
+  address: x.x.x.x # Hostname/IP of mqtt server
+  # port: 1883
+  # prefix: myhome/ObjectTrackers  #prefix applied to all published MQTT topics
+  # events: events  # topic (under prefix) to post interaction events to
+  # detections: detections  # topic (under prefix) to post object detections to
+
+# The docker container internally runs an RtspSimpleServer instance
+rtspSimpleServer:
+#  apiHost: localhost
+#  apiPort: 9997
+
+# Recording manager handles saving videos of events
+recordingManager:
+  mediaRoot: "/media" # Root path to store media files at, eg /media in the docker container
+  # makeSymlinks: True  # Make a hierarchy of symlinks under mediaRoot. This allows browsing folders to 'filter' by object, event, location
+
+# HomeAssistant integration will create entities in HA using MQTT AutoDiscovery
+#homeAssistant:
+#  discoveryEnabled: false  # enable publishing AutoDiscovery mqtt topics. This must be true for entities to be created in HomeAssistant
+#  discoveryPrefix: str = "homeassistant"  # AutoDiscovery prefix that HA is watching
+#  entityPrefix: Tracker # Prefix added to entity_ids created in HA
+
+models:
+  testModel: # unique identifier for this model. This name will be referenced in 'cameras'
+    path: models/yolov5m.pt  # path to YOLOv5 model to use. If not locally found it will try to download
+    # width: 640  # width model was trained with
+    labels: # list of labels for the model
+    - person
+    - bicycle
+    - car
+    - motorcycle
+    - airplane
+    - bus
+    - train
+    - truck
+    - boat
+    - trafficlight
+    - firehydrant
+    - stopsign
+    - parkingmeter
+    - bench
+    - bird
+    - cat
+    - dog
+    - horse
+    - sheep
+    - cow
+    - elephant
+    - bear
+    - zebra
+    - giraffe
+    - backpack
+    - umbrella
+    - handbag
+    - tie
+    - suitcase
+    - frisbee
+    - skis
+    - snowboard
+    - sportsball
+    - kite
+    - baseballbat
+    - baseballglove
+    - skateboard
+    - surfboard
+    - tennisracket
+    - bottle
+    - wineglass
+    - cup
+    - fork
+    - knife
+    - spoon
+    - bowl
+    - banana
+    - apple
+    - sandwich
+    - orange
+    - broccoli
+    - carrot
+    - hotdog
+    - pizza
+    - donut
+    - cake
+    - chair
+    - couch
+    - pottedplant
+    - bed
+    - diningtable
+    - toilet
+    - tv
+    - laptop
+    - mouse
+    - remote
+    - keyboard
+    - cellphone
+    - microwave
+    - oven
+    - toaster
+    - sink
+    - refrigerator
+    - book
+    - clock
+    - vase
+    - scissors
+    - teddybear
+    - hairdrier
+    - toothbrush
+
+# cameras defines how to get images and which model to use on those images
+cameras:
+  exampleRtsp: # Only RTSP cameras support recording videos
+    rtspUrl: rtsp://192.168.15.75:8554/unicast
+    model: testModel
+    refresh: 1 # Seconds between processing a frame
+#   exampleImage:  # Image cameras refresh a URL to get images
+#     imageUrl: https://192.168.15.75/cgi-bin/currentpic.cgi
+#     refresh: 1  # seconds between refreshes
+#     model: testModel
+#   exampleVideo: # Loop videos from disk
+#     videoPath:
+#     - "./testVideo1.mkv"
+#     - "./testVideo2.mkv"
+#     - "./testVideo3.mkv"
+#     refresh: 0.1 # Seconds between frames
+#     model: testModel
+
+# Interactions define the events that can be raised when objects overlap
+# Interactions events will be posted to MQTT in a format like:
+# /<prefix>/<events>/<camera>/<interactionName>/<slot1>/<slot2>
+# for example:
+# /myhome/ObjectTrackers/exampleRtsp/PetRidingObject/dog/motorcycle
+interactions:
+  # This interaction will trigger an event if:
+  # any of (cat, dog)
+  # overlaps
+  # any of ( bicycle, car, motorcylce, horse )
+  # where at least 80% (threshold) of the smaller object must overlap
+  # and this overlap was seen again at least minTime seconds after the initial overlap was seen
+  PetRidingObject: # Name of interaction
+    slots: # list of lists of objects that can interact with eachother. Currently only exactly 2 lists is supported
+      - - cat
+        - dog
+      - - bicycle
+        - car
+        - motorcycle
+        - horse
+    threshold: 0.8  # fraction of the smallest object that must overlap to count as an interaction
+
+    # exactly how minTime and expireTime work may change as it is currently not great, but currently:
+    #  When two slot items overlap by threshold, a timer is started.
+    #  Every frame there is a check if this overlap still exists. If there is ever an 'expireTime' seconds period
+    #  where the overlap has not been seen again, it expires. Otherwise, if the overlap is seen again
+    # after minTime seconds have passed (but before an expire triggers) then the event is raised
+    minTime: 6
+    expireTime: 4
+
+  PersonPettingPet:
+    slots:
+      - - person
+      - - cat
+        - dog
+    threshold: 0.5
+    minTime: 5
+    expireTime: 5

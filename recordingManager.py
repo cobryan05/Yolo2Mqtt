@@ -3,7 +3,6 @@
           time to warm up before starting recordingManager '''
 
 # fmt: off
-import json
 import argparse
 import logging
 import itertools
@@ -12,6 +11,7 @@ import paho.mqtt.client as mqtt
 import re
 import time
 import sys
+import yaml
 from dataclasses import dataclass
 from threading import Timer
 from src.config import Config
@@ -116,7 +116,7 @@ class RecordingManager:
         if args.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
 
-        config: dict = json.load(open(args.config))
+        config: dict = yaml.load(open(args.config), yaml.Loader)
         self._config: Config = Config(config)
 
         self._rtsp = RtspSimpleServer(
@@ -241,7 +241,7 @@ def parseArgs():
     parser = argparse.ArgumentParser(description="Run object tracking on image streams",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--config', help="Configuration file",
-                        required=False, default="config.json")
+                        required=False, default="config.yml")
     parser.add_argument('--verbose', '-v', help="Verbose",
                         action='store_true', default=False)
     parser.add_argument(

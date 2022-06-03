@@ -23,7 +23,7 @@ class Mqtt:
 @dataclass
 class RecordingManager:
     mediaRoot: str
-    makeSymlinks: bool = False
+    makeSymlinks: bool = True
 
 
 @dataclass
@@ -61,7 +61,7 @@ class Camera:
 
 @dataclass
 class Model:
-    path: str = "models/default.pt"
+    path: str = "models/yolov5s.pt"
     width: int = 640
     labels: list[str] = field(default_factory=list)
 
@@ -99,6 +99,8 @@ class Config:
 
     @staticmethod
     def validKeys(cfg: dict) -> dict:
+        if cfg is None:
+            cfg = {}
         newDict = {}
         for key, value in cfg.items():
             for validKey in validKeys:
