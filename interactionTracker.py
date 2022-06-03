@@ -46,7 +46,7 @@ class TrackedLabel:
 
 @dataclass
 class EventKey:
-    name: str
+    key: str
     slots: list[str]
 
     def __hash__(self):
@@ -54,6 +54,10 @@ class EventKey:
 
     def __eq__(self, other):
         return hash(self) == hash(other)
+
+    @property
+    def name(self) -> str:
+        return f"{self.key}/{'/'.join(self.slots)}"
 
 
 @dataclass
@@ -113,7 +117,7 @@ class InteractionTracker:
                 usedKeys: set[EventKey] = set()
                 for event in newEvents:
                     slotLabels = [obj.label for obj in event.slotsObjs]
-                    eventKey: EventKey = EventKey(name=event.name,
+                    eventKey: EventKey = EventKey(key=event.name,
                                                   slots=slotLabels)
                     # Don't process multiple detections of the same event
                     if eventKey in usedKeys:
@@ -136,7 +140,7 @@ class InteractionTracker:
                 # Check for expired events
                 for eventKey in allKeys.difference(usedKeys):
                     trackedEvent = context.events.get(eventKey, None)
-                    interaction = self._config.interactions[eventKey.name]
+                    interaction = self._config.interactions[eventKey.key]
 
                     # If this even expired then clear it from MQTT and remove it from the context
                     if time.time() > trackedEvent.lastTimestamp + float(interaction.expireTime):
@@ -151,7 +155,7 @@ class InteractionTracker:
 
     def publishEvent(self, context: Context, eventKey: EventKey, clear: bool = False):
         data = {}
-        data[MQTT_KEY_EVENT_NAME] = eventKey.name
+        data[MQTT_KEY_EVENT_NAME] = eventKey.key
         data[MQTT_KEY_SLOTS] = eventKey.slots
         topic = self._getEventTopic(context, eventKey)
         if clear:
@@ -167,7 +171,7 @@ class InteractionTracker:
         if entityId not in self._discoveryPublished:
             self._discoveryPublished.add(entityId)
             configTopic = f"{mqttConfigTopic}/config"
-            friendlyName = f"{self._config.homeAssistant.entityPrefix} - [{eventKey.name}] [{context.name}] [{'|'.join(eventKey.slots)}]"
+            friendlyName = f"{self._config.homeAssistant.entityPrefix} - [{eventKey.name.replace('/','|')}] [{context.name}]"
             entityCfg = {"name": friendlyName, "friendly_name": friendlyName,
                          "unique_id": entityId, "state_topic": stateTopic}
             self._mqtt.publish(configTopic, json.dumps(entityCfg), retain=True, absoluteTopic=True)
@@ -179,13 +183,12 @@ class InteractionTracker:
         charsToRemove = ['-', '_']
         replaceDict = {ord(x): '' for x in charsToRemove}
         contextName = context.name.translate(replaceDict)
-        eventName = eventKey.name.translate(replaceDict)
-        slotsNames = '-'.join([slot.translate(replaceDict) for slot in eventKey.slots])
+        eventName = eventKey.name.translate(replaceDict).replace("/", "-")
 
-        return f"{self._config.homeAssistant.entityPrefix}-{contextName}-{eventName}-{slotsNames}"
+        return f"{self._config.homeAssistant.entityPrefix}-{contextName}-{eventName}"
 
     def _getEventTopic(self, context: Context, eventKey: EventKey) -> str:
-        topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}/{'/'.join(eventKey.slots)}"
+        topicStr = f"{self._mqttEvents}/{context.name}/{eventKey.name}"
         return topicStr
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
