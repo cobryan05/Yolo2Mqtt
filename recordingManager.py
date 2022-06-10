@@ -15,6 +15,7 @@ import yaml
 from dataclasses import dataclass
 from threading import Timer
 from src.config import Config
+from src.mediaManager import MediaManager
 from src.mqttClient import MqttClient
 from src.rtspSimpleServer import RtspSimpleServer
 from src.rtspDelayedProxy import RtspDelayedProxy
@@ -46,52 +47,53 @@ class StreamEventRecorder:
         Delays stopping a recording, and will resume the same recording if the same
         event is received before the recording stop delay expires '''
 
-    def __init__(self, delayedStream: RtspDelayedProxy, ffmpegCmd: str = "ffmpeg"):
+    def __init__(self, delayedStream: RtspDelayedProxy, mediaManager: MediaManager, ffmpegCmd: str = "ffmpeg"):
         self._stream: RtspDelayedProxy = delayedStream
         self._recorders: dict[str, EventFileWriter] = {}
+        self._mediaMan = mediaManager
         self._ffmpegCmd = ffmpegCmd
 
-    def startEventRecording(self, eventName: str, outputDir: str) -> str:
+    def startEventRecording(self, eventParams: MediaManager.EventParams) -> str:
         ''' Starts recording an event, or increments refCnt of an active recording of this event'''
         ''' Returns the filename of the recorded event, or None if no recording started '''
-        recording = self._recorders.get(eventName, None)
+        recording = self._recorders.get(eventParams.eventName, None)
         if recording is not None:
             if recording.stopDelayTimer is not None:
                 recording.stopDelayTimer.cancel()
                 recording.stopDelayTimer = None
             recording.refCnt += 1
             logger.info(
-                f"Extending recording of {eventName} from {self._stream.rtspUrl}. Refcnt is now {recording.refCnt}")
+                f"Extending recording of {eventParams.eventName} from {self._stream.rtspUrl}. Refcnt is now {recording.refCnt}")
             return None
 
-        logger.info(f"Starting recording of {eventName} from {self._stream.rtspUrl}")
+        logger.info(f"Starting recording of {eventParams.eventName} from {self._stream.rtspUrl}")
 
-        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        fileName = f"{timestamp}___{eventName}.mp4"
-        filePath = os.path.join(outputDir, fileName)
-        self._recorders[eventName] = EventFileWriter(fileRecorder=RtspRecorder(
+        filePath = self._mediaMan.getRecordingPath(eventParams)
+
+        self._recorders[eventParams.eventName] = EventFileWriter(fileRecorder=RtspRecorder(
             self._stream.rtspUrl, filePath, ffmpegCmd=self._ffmpegCmd))
         return filePath
 
-    def stopEventRecording(self, eventName: str):
+    def stopEventRecording(self, eventParams: MediaManager.EventParams):
         ''' Decrements recording refCnt, and stops the stream if it reaches zero'''
-        recording = self._recorders.get(eventName, None)
+        recording = self._recorders.get(eventParams.eventName, None)
         if recording is None:
-            logger.warning(f"Failed to stopEventRecording. Event not found: {eventName}")
+            logger.warning(f"Failed to stopEventRecording. Event not found: {eventParams.eventName}")
             return
 
         recording.refCnt -= 1
         if recording.refCnt > 0:
             logger.info(
-                f"Decrementing refCnt of {eventName} from {self._stream.rtspUrl}. RefCnt is now {recording.refCnt}")
+                f"Decrementing refCnt of {eventParams.eventName} from {self._stream.rtspUrl}. RefCnt is now {recording.refCnt}")
         else:
             if recording.stopDelayTimer is None:
-                recording.stopDelayTimer = Timer(self._stream.delay, lambda: self._stopRecording(eventName))
+                recording.stopDelayTimer = Timer(self._stream.delay, lambda: self._stopRecording(eventParams.eventName))
                 recording.stopDelayTimer.start()
                 logger.info(
-                    f"Starting timer to stop recording of {eventName} from {self._stream.rtspUrl}")
+                    f"Starting timer to stop recording of {eventParams.eventName} from {self._stream.rtspUrl}")
             else:
-                logger.warning(f"Timer to stop recording of {eventName} from {self._stream.rtspUrl} already exists!")
+                logger.warning(
+                    f"Timer to stop recording of {eventParams.eventName} from {self._stream.rtspUrl} already exists!")
         return
 
     def _stopRecording(self, eventName: str):
@@ -125,6 +127,9 @@ class RecordingManager:
         self._rtsp = RtspSimpleServer(
             self._config.RtspSimpleServer.apiHost, self._config.RtspSimpleServer.apiPort)
 
+        recSettings = self._config.recordingManager
+        self._mediaManager = MediaManager(recSettings.mediaRoot)
+
         self._recs: dict[str, StreamEventRecorder] = {}
 
         rtspCfg = self._rtsp.GetConfig()
@@ -142,7 +147,8 @@ class RecordingManager:
                     overwriteExisting=(False == args.dbgSkipExistingDelay),
                     ffmpegCmd=args.ffmpeg
                 )
-                self._recs[cameraName] = StreamEventRecorder(delayedStream=delayedStream, ffmpegCmd=args.ffmpeg)
+                self._recs[cameraName] = StreamEventRecorder(
+                    delayedStream=delayedStream, mediaManager=self._mediaManager, ffmpegCmd=args.ffmpeg)
 
         logger.info(
             f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
@@ -167,62 +173,27 @@ class RecordingManager:
     def __del__(self):
         self.stop()
 
-    @staticmethod
-    def _createEventName(cameraName: str, eventName: str, slots: list[str]):
-        return f"{cameraName}___{eventName}___{slots.replace('/', '__')}"
-
-    @staticmethod
-    def _splitEventName(eventName: str) -> tuple[str, str, list[str]]:
-        cameraName, eventName, slotsStr = eventName.split("___")
-        slots = slotsStr.split("__")
-        return cameraName, eventName, slots
-
-    @staticmethod
-    def _createSymlinks(eventName: str, videoPath: str, outputDir: str):
-        os.makedirs(outputDir, exist_ok=True)
-        cameraName, eventName, slots = RecordingManager._splitEventName(eventName)
-        videoName = os.path.basename(videoPath)
-        parts = [cameraName, eventName] + slots
-        symlinks = []
-        for permutation in itertools.permutations(parts):
-            curPath = outputDir
-            for part in permutation:
-                curPath = os.path.join(curPath, part)
-                symlinks.append(os.path.join(curPath, videoName))
-
-        try:
-            symlinks = sorted(set(symlinks))
-            for linkname in symlinks:
-                os.makedirs(os.path.dirname(linkname), exist_ok=True)
-                if not os.path.exists(linkname):
-                    relVidPath = os.path.relpath(videoPath, os.path.dirname(linkname))
-                    os.symlink(relVidPath, linkname)
-        except Exception as e:
-            logger.error(f"Failed to create symlinks for {videoPath}: {e}")
-
-    def startRecordingEvent(self, cameraName: str, eventName: str):
-        if cameraName not in self._recs:
+    def startRecordingEvent(self, eventParams: MediaManager.EventParams):
+        if eventParams.cameraName not in self._recs:
             logger.warning(
-                f"Failed to startRecordingEvent for {cameraName}|{eventName}. No camera stream found."
+                f"Failed to startRecordingEvent for {eventParams.cameraName}|{eventParams.interactionName}. No camera stream found."
             )
             return
 
-        rec = self._recs[cameraName]
-        videoPath = rec.startEventRecording(eventName=eventName, outputDir=os.path.join(
-            self._config.recordingManager.mediaRoot, "video"))
+        rec = self._recs[eventParams.cameraName]
+        videoPath = rec.startEventRecording(eventParams)
         if videoPath is not None and self._config.recordingManager.makeSymlinks:
-            RecordingManager._createSymlinks(eventName, videoPath, outputDir=os.path.join(
-                self._config.recordingManager.mediaRoot, "symlinks"))
+            self._mediaManager.createSymlinks(eventParams, videoPath)
 
-    def stopRecordingEvent(self, cameraName: str, eventName: str):
-        if cameraName not in self._recs:
+    def stopRecordingEvent(self, eventParams: MediaManager.EventParams):
+        if eventParams.cameraName not in self._recs:
             logger.warning(
-                f"Failed to stopRecordingEvent for {cameraName}|{eventName}. No camera stream found."
+                f"Failed to stopRecordingEvent for {eventParams.cameraName}|{eventParams.interactionName}. No camera stream found."
             )
             return
 
-        rec = self._recs[cameraName]
-        rec.stopEventRecording(eventName)
+        rec = self._recs[eventParams.cameraName]
+        rec.stopEventRecording(eventParams)
 
     def mqttCallback(self, msg: mqtt.MQTTMessage):
         match = self._topicRe.match(msg.topic)
@@ -230,14 +201,14 @@ class RecordingManager:
         eventSlots: str = match[RE_GROUP_EVENTSLOTS]
         cameraName: str = match[RE_GROUP_CAMERA]
 
-        eventName = RecordingManager._createEventName(
-            cameraName=cameraName, eventName=eventName, slots=eventSlots)
+        eventParams = MediaManager.EventParams(
+            cameraName=cameraName, interactionName=eventName, slots=eventSlots.split("/"))
         if len(msg.payload) > 0:
-            logger.debug(f"Got event: {eventName}")
-            self.startRecordingEvent(cameraName, eventName)
+            logger.debug(f"Got event: {eventParams.eventName}")
+            self.startRecordingEvent(eventParams)
         else:
-            logger.debug(f"Cleared event: {eventName}")
-            self.stopRecordingEvent(cameraName, eventName)
+            logger.debug(f"Cleared event: {eventParams.eventName}")
+            self.stopRecordingEvent(eventParams)
 
 
 def parseArgs():
