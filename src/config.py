@@ -8,7 +8,7 @@ validKeys = ["mqtt", "address", "port", "prefix", "events", "detections",
              "interactions", "slots", "threshold", "minTime", "expireTime",
              "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec",
              "models", "path", "width", "labels",
-             "recordingManager", "mediaRoot", "makeSymlinks"]
+             "recordingManager", "mediaRoot", "makeSymlinks", "keepVideosDays"]
 
 
 @dataclass
@@ -24,6 +24,7 @@ class Mqtt:
 class RecordingManager:
     mediaRoot: str
     makeSymlinks: bool = True
+    keepVideosDays: int = 14
 
 
 @dataclass

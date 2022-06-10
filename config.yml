@@ -17,6 +17,7 @@ rtspSimpleServer:
 recordingManager:
   mediaRoot: "/media" # Root path to store media files at, eg /media in the docker container
   # makeSymlinks: True  # Make a hierarchy of symlinks under mediaRoot. This allows browsing folders to 'filter' by object, event, location
+  # keepVideosDays: 14  # Videos older than this will be deleted
 
 # HomeAssistant integration will create entities in HA using MQTT AutoDiscovery
 #homeAssistant:

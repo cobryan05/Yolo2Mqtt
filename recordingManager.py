@@ -132,7 +132,7 @@ class RecordingManager:
             self._config.RtspSimpleServer.apiHost, self._config.RtspSimpleServer.apiPort)
 
         recSettings = self._config.recordingManager
-        self._mediaManager = MediaManager(recSettings.mediaRoot)
+        self._mediaManager = MediaManager(recSettings.mediaRoot, daysToKeep=recSettings.keepVideosDays)
 
         self._recs: dict[str, StreamEventRecorder] = {}
 
