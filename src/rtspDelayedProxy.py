@@ -40,7 +40,7 @@ class RtspDelayedProxy:
         self._ffmpegOut = ffmpeg.input("pipe:").output(publishUrl, codec="copy", rtsp_transport="tcp", format="rtsp")
 
         # Add a stream to the server and publish to it
-        self._run( overwrite=overwriteExisting)
+        self._run(overwrite=overwriteExisting)
 
     def __del__(self):
         if self._timer is not None:
@@ -55,7 +55,7 @@ class RtspDelayedProxy:
     def delay(self) -> int:
         return self._delay
 
-    def _run(self, overwrite: bool ):
+    def _run(self, overwrite: bool):
         streamExists = self._publishName in self._rtspApi.GetPaths().get("items", {})
         if streamExists:
             if overwrite:
@@ -72,13 +72,12 @@ class RtspDelayedProxy:
             self._timer = Timer(RtspDelayedProxy.PUBLISH_START_DELAY, self._ffmpegThreadFunc, args=(self._runId,))
             self._timer.start()
 
-
-    def _ffmpegThreadFunc(self, runId:int):
+    def _ffmpegThreadFunc(self, runId: int):
         @dataclass
         class DelayedPacket:
             data: bytes
             timestamp: float
-        BROKEN_PIPE_RETRY_CNT:int =5
+        BROKEN_PIPE_RETRY_CNT: int = 5
 
         inProc = self._ffmpegIn.run_async(cmd=self._cmd, pipe_stdout=True)
         outProc = self._ffmpegOut.run_async(cmd=self._cmd, pipe_stdin=True)
