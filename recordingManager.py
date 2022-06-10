@@ -85,11 +85,13 @@ class StreamEventRecorder:
             logger.info(
                 f"Decrementing refCnt of {eventName} from {self._stream.rtspUrl}. RefCnt is now {recording.refCnt}")
         else:
-            assert(recording.stopDelayTimer is None)
-            recording.stopDelayTimer = Timer(self._stream.delay, lambda: self._stopRecording(eventName))
-            recording.stopDelayTimer.start()
-            logger.info(
-                f"Starting timer to stop recording of {eventName} from {self._stream.rtspUrl}")
+            if recording.stopDelayTimer is None:
+                recording.stopDelayTimer = Timer(self._stream.delay, lambda: self._stopRecording(eventName))
+                recording.stopDelayTimer.start()
+                logger.info(
+                    f"Starting timer to stop recording of {eventName} from {self._stream.rtspUrl}")
+            else:
+                logger.warning(f"Timer to stop recording of {eventName} from {self._stream.rtspUrl} already exists!")
         return
 
     def _stopRecording(self, eventName: str):
@@ -105,6 +107,7 @@ class StreamEventRecorder:
         for rec in self._recorders.values():
             if rec.stopDelayTimer is not None:
                 rec.stopDelayTimer.cancel()
+                rec.stopDelayTimer = None
             if rec.fileRecorder is not None:
                 rec.fileRecorder.stop()
         if self._stream is not None:

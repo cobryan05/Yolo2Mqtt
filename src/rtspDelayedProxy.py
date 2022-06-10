@@ -13,6 +13,7 @@ from collections import deque
 from threading import Timer, Event
 from dataclasses import dataclass
 from .rtspSimpleServer import RtspSimpleServer
+from .rtspRecorder import killFfmpeg
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RtspDelayedProxy")
 
@@ -35,9 +36,10 @@ class RtspDelayedProxy:
         self._runId: int = 0
 
         publishUrl = f"{self._rtspApi.rtspProxyUrl}/{self._publishName}"
-        self._ffmpegIn = ffmpeg.input(srcRtspUrl, rtsp_transport='tcp',
-                                      use_wallclock_as_timestamps=1).output("pipe:", codec="copy", format="nut")
-        self._ffmpegOut = ffmpeg.input("pipe:").output(publishUrl, codec="copy", rtsp_transport="tcp", format="rtsp")
+        self._ffmpegIn = ffmpeg.input(srcRtspUrl, rtsp_transport='tcp', use_wallclock_as_timestamps=1).output(
+            "pipe:", codec="copy", format="nut").global_args("-nostats")
+        self._ffmpegOut = ffmpeg.input("pipe:").output(publishUrl, codec="copy",
+                                                       rtsp_transport="tcp", format="rtsp").global_args("-nostats")
 
         # Add a stream to the server and publish to it
         self._run(overwrite=overwriteExisting)
@@ -107,18 +109,8 @@ class RtspDelayedProxy:
             logger.error(f"***********Unexpected Exception: {e}")
             self._run(overwrite=True)
 
-        # TODO: This is really ugly and bad
-        try:
-            os.kill(outProc.pid, signal.SIGINT)
-            os.kill(inProc.pid, signal.SIGINT)
-            time.sleep(1)
-            os.kill(outProc.pid, signal.SIGTERM)
-            os.kill(inProc.pid, signal.SIGTERM)
-            time.sleep(1)
-            os.kill(outProc.pid, signal.SIGKILL)
-            os.kill(inProc.pid, signal.SIGKILL)
-        except Exception as e:
-            logger.error(f"Exception killing processes: {e}")
+        killFfmpeg(outProc.pid)
+        killFfmpeg(inProc.pid)
 
     def wait(self, timeout: float = None):
         ''' Waits for ffmpeg to stop.
