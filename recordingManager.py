@@ -64,11 +64,15 @@ class StreamEventRecorder:
             recording.refCnt += 1
             logger.info(
                 f"Extending recording of {eventParams.eventName} from {self._stream.rtspUrl}. Refcnt is now {recording.refCnt}")
-            return None
-
-        logger.info(f"Starting recording of {eventParams.eventName} from {self._stream.rtspUrl}")
+            if recording.fileRecorder.running():
+                return None
+            # If FFMPEG wasn't actually running then fallthrough to a new instance
+            logger.warning("Recorder wasn't running! Starting new file")
+            recording.fileRecorder.stop()
 
         filePath = self._mediaMan.getRecordingPath(eventParams)
+
+        logger.info(f"Starting recording of {eventParams.eventName} from {self._stream.rtspUrl} to {filePath}")
 
         self._recorders[eventParams.eventName] = EventFileWriter(fileRecorder=RtspRecorder(
             self._stream.rtspUrl, filePath, ffmpegCmd=self._ffmpegCmd))
@@ -90,7 +94,7 @@ class StreamEventRecorder:
                 recording.stopDelayTimer = Timer(self._stream.delay, lambda: self._stopRecording(eventParams.eventName))
                 recording.stopDelayTimer.start()
                 logger.info(
-                    f"Starting timer to stop recording of {eventParams.eventName} from {self._stream.rtspUrl}")
+                    f"Starting timer for {self._stream.delay}s to stop recording of {eventParams.eventName} from {self._stream.rtspUrl}")
             else:
                 logger.warning(
                     f"Timer to stop recording of {eventParams.eventName} from {self._stream.rtspUrl} already exists!")
