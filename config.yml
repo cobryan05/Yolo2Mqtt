@@ -25,6 +25,10 @@ recordingManager:
 #  discoveryPrefix: str = "homeassistant"  # AutoDiscovery prefix that HA is watching
 #  entityPrefix: Tracker # Prefix added to entity_ids created in HA
 
+yolo:
+  # device: "cpu" # device name to pass to torch. Can be "cuda" if docker container supports gpu
+  # multiprocessing: true  # use python multiprocessing.  If false, uses multiprocessing.dummy (threads)
+
 models:
   testModel: # unique identifier for this model. This name will be referenced in 'cameras'
     path: models/yolov5m.pt  # path to YOLOv5 model to use. If not locally found it will try to download
