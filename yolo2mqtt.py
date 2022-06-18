@@ -48,6 +48,12 @@ class Yolo2Mqtt:
         config: dict = yaml.load(open(args.config), yaml.Loader)
         self._config: Config = Config(config)
 
+        # Switch to mp.dummy if requested
+        if self._config.Yolo.multiprocessing:
+            from multiprocessing import Process, Queue
+        else:
+            from multiprocessing.dummy import Process, Queue
+
         self._mqttDetTopic = self._config.Mqtt.detections
 
         logger.info(f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
@@ -55,11 +61,11 @@ class Yolo2Mqtt:
         self._mqtt: MqttClient = MqttClient(broker_address=self._config.Mqtt.address,
                                             broker_port=self._config.Mqtt.port,
                                             prefix=self._config.Mqtt.prefix)
-        self._queue: mp.Queue[tuple(str, WatchedObject)] = mp.Queue()
+        self._queue: Queue[tuple(str, WatchedObject)] = Queue()
 
-        self._workers: list[mp.Process] = []
+        self._workers: list[Process] = []
         for key, cameraInfo in self._config.cameras.items():
-            newWorker = mp.Process(target=Yolo2Mqtt._workerProc, args=(
+            newWorker = Process(target=Yolo2Mqtt._workerProc, args=(
                 key, self._queue, self._config, cameraInfo, args.debug))
             self._workers.append(newWorker)
 
@@ -129,12 +135,8 @@ class Yolo2Mqtt:
                 logger.info("All workers have exited")
                 break
 
-        print("DONE")
-
-        pass
-
     @staticmethod
-    def _workerProc(name: str, queue: mp.Queue, config: Config, camera: Camera, debug: bool = False) -> None:
+    def _workerProc(name: str, queue: Queue, config: Config, camera: Camera, debug: bool = False) -> None:
         print(f"Background thread {name}")
         logger = logging.getLogger(f"Worker_{name}")
 
@@ -153,7 +155,8 @@ class Yolo2Mqtt:
             fatal(f"Could not find model configuration [{camera.model}]")
 
         try:
-            model = YoloInference(weights=modelInfo.path, imgSize=modelInfo.width, labels=modelInfo.labels)
+            model = YoloInference(weights=modelInfo.path, imgSize=modelInfo.width,
+                                  labels=modelInfo.labels, device=config.Yolo.device)
         except Exception as e:
             fatal(f"Failed to load model [{modelInfo.path}]: {e}")
 

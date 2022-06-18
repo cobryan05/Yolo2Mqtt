@@ -8,7 +8,14 @@ validKeys = ["mqtt", "address", "port", "prefix", "events", "detections",
              "interactions", "slots", "threshold", "minTime", "expireTime",
              "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec",
              "models", "path", "width", "labels",
-             "recordingManager", "mediaRoot", "makeSymlinks", "keepVideosDays"]
+             "recordingManager", "mediaRoot", "makeSymlinks", "keepVideosDays",
+             "yolo", "device", "multiprocessing"]
+
+
+@dataclass
+class Yolo:
+    device: str = "cpu"
+    multiprocessing: bool = True
 
 
 @dataclass
@@ -98,6 +105,9 @@ class Config:
         self._mqtt: Mqtt = Mqtt(**Config.validKeys(cfg))
         self._mqtt.prefix = self._mqtt.prefix.rstrip('/')
 
+        cfg = config.get("yolo", {})
+        self._yolo: Yolo = Yolo(**Config.validKeys(cfg))
+
     @staticmethod
     def validKeys(cfg: dict) -> dict:
         if cfg is None:
@@ -137,3 +147,7 @@ class Config:
     @property
     def Mqtt(self) -> Mqtt:
         return self._mqtt
+
+    @property
+    def Yolo(self) -> Yolo:
+        return self._yolo
