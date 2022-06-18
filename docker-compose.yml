@@ -1,0 +1,31 @@
+# SAMPLE DOCKER COMPOSE
+version: '3'
+services:
+  mqtt:
+    container_name: mqtt
+    image: eclipse-mosquitto
+    restart: always
+    command: /usr/sbin/mosquitto -c /mosquitto-no-auth.conf
+    networks:
+      - yolo2mqtt
+    # ports:
+    #   - "1883:1883"  # Uncomment to expose MQTT server
+
+  yolo2mqtt:
+    container_name: yolo2mqtt
+    image: yolo2mqtt
+    # volumes:
+    #   - /path/on/host/to/yolo2mqtt/config:/config
+    #   - /path/on/host/to/yolo2mqtt/recordings:/media
+    environment:
+      - TZ=America/Chicago
+    depends_on:
+      - mqtt2
+    restart: always
+    # ports:
+    #   - "8554:8554"  # Uncomment to expose internal RTSP server
+    networks:
+      - yolo2mqtt
+
+networks:
+  yolo2mqtt:

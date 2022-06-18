@@ -16,6 +16,6 @@ COPY --from=aler9/rtsp-simple-server /rtsp-simple-server /usr/bin/rtsp-simple-se
 # Now set up this app
 WORKDIR /app
 COPY . .
-COPY config.yml /config/config.yml
+COPY config.defaults.yml /config/config.yml
 
 ENTRYPOINT ["bash", "./run.sh", "--config", "/config/config.yml"]

@@ -2,7 +2,7 @@
 
 # An external MQTT server is required
 mqtt:
-  address: x.x.x.x # Hostname/IP of mqtt server
+  address: mqtt # Hostname/IP of mqtt server
   # port: 1883
   # prefix: myhome/ObjectTrackers  #prefix applied to all published MQTT topics
   # events: events  # topic (under prefix) to post interaction events to
@@ -169,6 +169,7 @@ interactions:
     expireTime: 4
 
   PersonPettingPet:
+    slots:
       - - person
       - - cat
         - dog
