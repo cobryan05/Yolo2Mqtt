@@ -29,7 +29,7 @@ class Mqtt:
 
 @dataclass
 class RecordingManager:
-    mediaRoot: str
+    mediaRoot: str = '/media'
     makeSymlinks: bool = True
     keepVideosDays: int = 14
 
@@ -63,7 +63,7 @@ class Camera:
     username: str = None
     password: str = None
     model: str = "default"
-    refresh: int = 1
+    refresh: float = 1.0
     rewindSec: int = 20
 
 
