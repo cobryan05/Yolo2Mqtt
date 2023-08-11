@@ -58,7 +58,7 @@ class RtspDelayedProxy:
         return self._delay
 
     def _run(self, overwrite: bool):
-        streamExists = self._publishName in self._rtspApi.GetPaths().get("items", {})
+        streamExists = self._publishName in [item['name'] for item in self._rtspApi.GetPaths().get("items", {})]
         if streamExists:
             if overwrite:
                 # Remove anything existing delayed stream

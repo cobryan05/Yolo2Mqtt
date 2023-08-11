@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Copy individual apps
-COPY --from=aler9/rtsp-simple-server /rtsp-simple-server /usr/bin/rtsp-simple-server
+COPY --from=bluenviron/mediamtx /mediamtx /usr/bin/rtsp-simple-server
 
 # Now set up this app
 WORKDIR /app

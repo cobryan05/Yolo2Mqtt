@@ -125,6 +125,8 @@ class RecordingManager:
         if args.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
 
+        self._recs: dict[str, StreamEventRecorder] = {}
+
         config: dict = yaml.load(open(args.config), yaml.Loader)
         self._config: Config = Config(config)
 
@@ -133,8 +135,6 @@ class RecordingManager:
 
         recSettings = self._config.recordingManager
         self._mediaManager = MediaManager(recSettings.mediaRoot, daysToKeep=recSettings.keepVideosDays)
-
-        self._recs: dict[str, StreamEventRecorder] = {}
 
         rtspCfg = self._rtsp.GetConfig()
         rtspActiveStreams: dict[str, dict] = rtspCfg["paths"]

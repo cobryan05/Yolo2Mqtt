@@ -1,4 +1,4 @@
-''' Interface with the rtsp-simple-server REST API '''
+''' Interface with the mediamtx REST API '''
 from email.headerregistry import ContentTypeHeader
 import logging
 import json
@@ -38,60 +38,60 @@ class RtspSimpleServer:
 
     def GetConfig(self) -> dict:
         ''' returns the configuration '''
-        return self._Get("v1/config/get")
+        return self._Get("v2/config/get")
 
     def SetConfig(self, config: dict) -> bool:
-        return self._Post("v1/config/set", config)
+        return self._Post("v2/config/set", config)
 
     def GetActiveRtspSessions(self) -> dict:
         ''' returns all active RTSP sessions '''
-        return self._Get("v1/rtspsessions/list")
+        return self._Get("v2/rtspsessions/list")
 
     def KickRtspSession(self, id: str) -> bool:
         ''' kicks out a RTSP session from the server '''
-        return self._Post(f"v1/rtspsessions/kick/{id}")
+        return self._Post(f"v2/rtspsessions/kick/{id}")
 
     def GetActiveRtspsSessions(self) -> dict:
         ''' returns all active RTSPS sessions '''
-        return self._Get("v1/rtspssessions/list")
+        return self._Get("v2/rtspssessions/list")
 
     def KickRtspsSession(self, id: str) -> bool:
         ''' kicks out a RTSPS session from the server '''
-        return self._Post(f"v1/rtspssessions/kick/{id}")
+        return self._Post(f"v2/rtspssessions/kick/{id}")
 
     def GetActiveRtmpConnections(self) -> dict:
         ''' returns all active RTMP connections '''
-        return self._Get("v1/rtmpconns/list")
+        return self._Get("v2/rtmpconns/list")
 
     def KickRtmpConnection(self, id: str) -> bool:
         ''' kicks out a RTSPS session from the server '''
-        return self._Post(f"v1/rtmpconns/kick/{id}")
+        return self._Post(f"v2/rtmpconns/kick/{id}")
 
     def GetPaths(self) -> dict:
         ''' returns all active paths '''
-        return self._Get("v1/paths/list")
+        return self._Get("v2/paths/list")
 
     def GetHlsMuxers(self) -> dict:
         ''' returns all active HLS muxers. '''
-        return self._Get("v1/hlsmuxers/list")
+        return self._Get("v2/hlsmuxers/list")
 
     def AddConfig(self, name: str, **kwargs) -> bool:
         ''' adds the configuration of a path '''
-        # See API for possible kwargs: https://aler9.github.io/rtsp-simple-server/#operation/configPathsAdd
+        # See API for possible kwargs: https://bluenviron.github.io/mediamtx/#operation/configPathsAdd
         # Useful:
         # source:
         # * publisher -> the stream is published by a RTSP or RTMP client
         # * rtsp://existing-url -> the stream is pulled from another RTSP server / camera
         # * redirect -> the stream is provided by another path or server
-        return self._Post(f"v1/config/paths/add/{name}", kwargs)
+        return self._Post(f"v2/config/paths/add/{name}", kwargs)
 
     def EditConfig(self, name: str, **kwargs) -> bool:
         ''' changes the configuration of a path '''
-        return self._Post(f"v1/config/paths/edit/{name}", kwargs)
+        return self._Post(f"v2/config/paths/edit/{name}", kwargs)
 
     def RemoveConfig(self, name: str, **kwargs) -> bool:
         ''' changes the configuration of a path '''
-        return self._Post(f"v1/config/paths/remove/{name}", kwargs)
+        return self._Post(f"v2/config/paths/remove/{name}", kwargs)
 
     def _Get(self, endpoint: str) -> dict:
         resp = requests.get(f"{self.apiUrl}/{endpoint}")
