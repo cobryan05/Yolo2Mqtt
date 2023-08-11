@@ -13,6 +13,9 @@ services:
 
   yolo2mqtt:
     container_name: yolo2mqtt
+    build:
+      dockerfile: ./Dockerfile
+      context: .
     image: yolo2mqtt
     # volumes:
     #   - /path/on/host/to/yolo2mqtt/config:/config

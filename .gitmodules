@@ -1,6 +1,3 @@
 [submodule "submodules/trackerTools"]
 	path = submodules/trackerTools
 	url = https://github.com/cobryan05/TrackerTools.git
-[submodule "submodules/yolov5"]
-	path = submodules/yolov5
-	url = https://github.com/ultralytics/yolov5.git
