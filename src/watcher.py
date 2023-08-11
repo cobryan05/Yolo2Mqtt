@@ -3,11 +3,14 @@
 from dataclasses import dataclass
 from threading import Event
 import cv2
+import datetime
+import os
 import logging
 import sys
 import numpy as np
 import time
 from signalslot import Signal
+from PIL import Image
 
 from trackerTools.yoloInference import YoloInference
 from trackerTools.bbox import BBox
@@ -36,7 +39,7 @@ class Watcher:
     class _DetectionInfo:
         detection: WatchedObject.Detection
 
-    def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, userData=None, debug: bool = False):
+    def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, userData=None, timelapseDir: str = None, timelapseInterval: int = -1, debug: bool = False):
         self._source: Source = source
         self._model: YoloInference = model
         self._delay: float = refreshDelay
@@ -44,6 +47,8 @@ class Watcher:
         self._objTracker: ObjectTracker = ObjectTracker(distThresh=BBOX_TRACKER_MAX_DIST_THRESH)
         self._userData = userData
         self._debug = debug
+        self._timelapseDir: str = timelapseDir
+        self._timelapseInterval: int = timelapseInterval
         self._newObjSignal: Signal = Signal(args=['obj', 'userData'])
         self._lostObjSignal: Signal = Signal(args=['obj', 'userData'])
         self._updatedObjSignal: Signal = Signal(args=['obj', 'userData'])
@@ -85,6 +90,14 @@ class Watcher:
         trackTimeStats: ValueStatTracker = ValueStatTracker()
         inferTimeStats: ValueStatTracker = ValueStatTracker()
         forceInference: bool = True  # First loop always runs inference
+        lastTimelapse = time.time()
+        nextTimelapse = float("inf")
+        if self._timelapseDir is not None and self._timelapseInterval > 0:
+            try:
+                os.makedirs(self._timelapseDir, mode=555, exist_ok=True)
+                nextTimelapse = lastTimelapse + self._timelapseInterval
+            except Exception as e:
+                logger.error(f"Failed to initialize timelapses: {e}")
 
         while True:
             timeElapsed = time.time() - loopStart
@@ -95,6 +108,10 @@ class Watcher:
                 startTime = time.time()
                 img = self._source.getNextFrame()
                 fetchTimeStats.addValue(time.time() - startTime)
+
+                if time.time() > nextTimelapse:
+                    self.saveTimelapse(img)
+                    nextTimelapse = time.time() + self._timelapseInterval
             except Exception as e:
                 logger.error(f"Exception getting image for {self._source}: {str(e)}")
                 continue
@@ -247,7 +264,15 @@ class Watcher:
 
         logger.info("Exit")
 
-    @ staticmethod
+    def saveTimelapse(self, img: np.array):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        output_path = os.path.join(self._timelapseDir, f"{timestamp}.png")
+        logger.info(f"Saving timelapse {output_path}")
+        imgRgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        pilImg: Image = Image.fromarray(imgRgb)
+        pilImg.save(output_path)
+
+    @staticmethod
     def drawTrackerOnImage(img: np.array, tracker: BBoxTracker.Tracker, color: tuple[int, int, int] = (255, 255, 255)):
         watchedObj: WatchedObject = tracker.metadata[METAKEY_TRACKED_WATCHED_OBJ]
 
@@ -267,13 +292,13 @@ class Watcher:
         for idx, (key, entry) in enumerate(watchedObj._confDict.items()):
             Watcher.drawBboxLabel(img, tracker.bbox, f"{key}: {entry.tracker}", color=color, line=idx+1, size=0.3)
 
-    @ staticmethod
+    @staticmethod
     def drawBboxOnImage(img: np.array, bbox: BBox, color: tuple[int, int, int] = (255, 255, 255), thickness=1):
         imgY, imgX = img.shape[:2]
         x1, y1, x2, y2 = bbox.asX1Y1X2Y2(imgX, imgY)
         cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness=thickness)
 
-    @ staticmethod
+    @staticmethod
     def drawBboxLabel(img: np.array,
                       bbox: BBox,
                       label: str,

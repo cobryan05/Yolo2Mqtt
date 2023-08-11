@@ -6,7 +6,7 @@ validKeys = ["mqtt", "address", "port", "prefix", "events", "detections",
              "rtspSimpleServer", "apiHost", "apiPort",
              "homeAssistant", "discoveryEnabled", "discoveryPrefix", "entityPrefix",
              "interactions", "slots", "threshold", "minTime", "expireTime",
-             "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec",
+             "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec", "timelapseDir", "timelapseInterval",
              "models", "path", "width", "labels",
              "recordingManager", "mediaRoot", "makeSymlinks", "keepVideosDays",
              "yolo", "device", "multiprocessing"]
@@ -65,6 +65,8 @@ class Camera:
     model: str = "default"
     refresh: float = 1.0
     rewindSec: int = 20
+    timelapseDir: str = None
+    timelapseInterval: int = 0
 
 
 @dataclass

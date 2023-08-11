@@ -174,7 +174,8 @@ class Yolo2Mqtt:
             queue.put((KEY_ACTION_UPDATED, obj, userData))
 
         watcher: Watcher = Watcher(source=source, model=model, refreshDelay=camera.refresh,
-                                   userData=Yolo2Mqtt._WatcherUserData(name), debug=debug)
+                                   userData=Yolo2Mqtt._WatcherUserData(name), timelapseDir=camera.timelapseDir,
+                                   timelapseInterval=camera.timelapseInterval, debug=debug)
         watcher.connectNewObjSignal(objAddedCallback)
         watcher.connectLostObjSignal(objLostCallback)
         watcher.connectUpdatedObjSignal(objUpdatedCallback)
