@@ -12,7 +12,7 @@ from src.rtspSimpleServer import RtspSimpleServer
 from . source import Source
 
 logging.basicConfig(stream=sys.stdout)
-logger = logging.getLogger("Watcher")
+logger = logging.getLogger("rtspSource")
 
 
 class RtspSource(Source):
@@ -36,7 +36,7 @@ class RtspSource(Source):
         self._rtspApi = rtspApi
         self._rtspRewindSec = rewindBufSec
         self._lock = Lock()
-        self._thread: Thread = Thread(target=self._captureThread, name="RtspCaptureThread")
+        self._thread: Thread = Thread(target=self._captureThread, name=f"RtspCaptureThread_{name}")
         self._thread.start()
 
     def __del__(self):

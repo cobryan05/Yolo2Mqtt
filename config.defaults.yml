@@ -6,6 +6,7 @@ mqtt:
   # port: 1883
   # prefix: myhome/ObjectTrackers  #prefix applied to all published MQTT topics
   # events: events  # topic (under prefix) to post interaction events to
+  # images: images  # topic (under prefix) to publish images to (if enabled per camera)
   # detections: detections  # topic (under prefix) to post object detections to
 
 # The docker container internally runs an RtspSimpleServer instance
@@ -136,6 +137,10 @@ cameras:
 #     - "./testVideo3.mkv"
 #     refresh: 0.1 # Seconds between frames
 #     model: testModel
+    # timelapseDir: None # Path to save periodic images from the camera stream
+    # timelapseInterval: 0 # Interval to save timelapses to timelapseDir
+    # publishImages: false # Publish images to mqtt
+
 
 # Interactions define the events that can be raised when objects overlap
 # Interactions events will be posted to MQTT in a format like:

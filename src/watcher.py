@@ -52,6 +52,7 @@ class Watcher:
         self._newObjSignal: Signal = Signal(args=['obj', 'userData'])
         self._lostObjSignal: Signal = Signal(args=['obj', 'userData'])
         self._updatedObjSignal: Signal = Signal(args=['obj', 'userData'])
+        self._imgUpdatedSignal: Signal = Signal(args=['image', 'userData'])
 
     def stop(self):
         self._stopEvent.set()
@@ -65,6 +66,9 @@ class Watcher:
     def connectUpdatedObjSignal(self, slot):
         return self._updatedObjSignal.connect(slot)
 
+    def connectImageUpdatedSignal(self, slot):
+        return self._imgUpdatedSignal.connect(slot)
+
     def disconnectNewObjSignal(self, slot):
         return self._newObjSignal.disconnect(slot)
 
@@ -73,6 +77,9 @@ class Watcher:
 
     def disconnectUpdatedObjSignal(self, slot):
         return self._updatedObjSignal.disconnect(slot)
+
+    def disconnectImageUpdatedSignal(self, slot):
+        return self._imgUpdatedSignal.disconnect(slot)
 
     def run(self):
         logger.info(f"Starting Watcher with [{self._source}], refreshing every {self._delay} seconds")
@@ -136,7 +143,7 @@ class Watcher:
                             self._updatedObjSignal.emit(obj=trackedObj, userData=self._userData)
 
             # Run inference if required
-            yoloRes = None
+            yoloRes = []
             if runInference:
                 forceInference = False
                 runDetectCntdwn = MAX_DETECT_INTERVAL
@@ -242,12 +249,15 @@ class Watcher:
 
                 inferTimeStats.addValue(time.time() - startTime)
 
-            if self._debug:
+            # Only publish if inference was ran and there is a listener for the image
+            should_publish_image = yoloRes and len(self._imgUpdatedSignal.slots) > 0
+
+            if self._debug or should_publish_image:
                 dbgImg = img.copy()
-                if yoloRes:
-                    for bbox, conf, classIdx, label in yoloRes:
-                        Watcher.drawBboxOnImage(dbgImg, bbox, color=(0, 255, 0), thickness=2)
-                        Watcher.drawBboxLabel(dbgImg, bbox, f"{label}: {conf:0.2}", color=(0, 255, 0), align=7)
+                for bbox, conf, classIdx, label in yoloRes:
+                    Watcher.drawBboxOnImage(dbgImg, bbox, color=(0, 255, 0), thickness=2)
+                    Watcher.drawBboxLabel(dbgImg, bbox, f"{label}: {conf:0.2}", color=(0, 255, 0), align=7)
+
                 for key, tracker in self._objTracker.getTrackedObjects().items():
                     trackedObj: WatchedObject = tracker.metadata[METAKEY_TRACKED_WATCHED_OBJ]
 
@@ -256,8 +266,13 @@ class Watcher:
                 dbgInfo = f"Fetch: {fetchTimeStats.lastValue:0.2}|{fetchTimeStats.avg:0.2}  Track: {trackTimeStats.lastValue:0.2}|{trackTimeStats.avg:0.2}  Infer: {inferTimeStats.lastValue:0.2}|{inferTimeStats.avg:0.2}"
                 cv2.putText(dbgImg, dbgInfo, (0, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1, cv2.LINE_AA)
 
-                cv2.imshow(dbgWin, dbgImg)
-                cv2.waitKey(1)
+                if yoloRes:
+                    pilImg: Image = Image.fromarray(cv2.cvtColor(dbgImg, cv2.COLOR_BGR2RGB))
+                    self._imgUpdatedSignal.emit(image=pilImg, userData=self._userData)
+
+                if self._debug:
+                    cv2.imshow(dbgWin, dbgImg)
+                    cv2.waitKey(1)
 
             logger.debug(f"---End of frame {frameCnt}---")
             frameCnt += 1

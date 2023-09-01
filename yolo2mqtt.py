@@ -4,7 +4,10 @@ import os
 import logging
 import yaml
 import argparse
+import io
 import multiprocessing as mp
+import numpy as np
+from PIL import Image
 from multiprocessing.queues import Queue
 from queue import Empty
 from dataclasses import dataclass
@@ -34,7 +37,7 @@ logger = logging.getLogger("Watcher")
 KEY_ACTION_ADDED = "added"
 KEY_ACTION_LOST = "lost"
 KEY_ACTION_UPDATED = "updated"
-
+KEY_ACTION_IMAGE_UPDATED = "image_updated"
 
 class Yolo2Mqtt:
     @dataclass
@@ -55,6 +58,7 @@ class Yolo2Mqtt:
             from multiprocessing.dummy import Process, Queue
 
         self._mqttDetTopic = self._config.Mqtt.detections
+        self._mqttImageTopic = self._config.Mqtt.images
 
         logger.info(f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
 
@@ -86,6 +90,15 @@ class Yolo2Mqtt:
         obj: WatchedObject = obj
         userData: Yolo2Mqtt._WatcherUserData = userData
         self._mqtt.publish(self._getDetTopic(obj, userData), obj.json(), retain=False)
+
+    def _imgUpdatedCallback(self, image: Image, userData, **kwargs):
+        userData: Yolo2Mqtt._WatcherUserData = userData
+        output_buffer = io.BytesIO()
+        image.save(output_buffer, format="PNG")
+        self._mqtt.publish(self._getImageTopic(userData), output_buffer.getvalue(), retain=False)
+
+    def _getImageTopic(self, userData: _WatcherUserData ) -> str:
+        return f"{self._mqttImageTopic}/{userData.name}/image"
 
     def _getDetTopic(self, obj: WatchedObject, userData: _WatcherUserData) -> str:
         return f"{self._mqttDetTopic}/{userData.name}/{obj.objId}"
@@ -122,13 +135,19 @@ class Yolo2Mqtt:
                     del self._workers[idx]
 
             if data:
-                action, obj, userdata = data
+                action, action_data = data
                 if action == KEY_ACTION_ADDED:
+                    obj, userdata = action_data
                     self._objAddedCallback(obj, userdata)
                 elif action == KEY_ACTION_LOST:
+                    obj, userdata = action_data
                     self._objRemovedCallback(obj, userdata)
                 elif action == KEY_ACTION_UPDATED:
+                    obj, userdata = action_data
                     self._objUpdatedCallback(obj, userdata)
+                elif action == KEY_ACTION_IMAGE_UPDATED:
+                    img, userdata = action_data
+                    self._imgUpdatedCallback(img, userdata)
                 else:
                     logger.warning(f"Unknown action: [{action}]")
             if len(self._workers) == 0:
@@ -165,13 +184,17 @@ class Yolo2Mqtt:
             fatal(f"Could not load configured source")
 
         def objAddedCallback(obj, userData, **kwargs):
-            queue.put((KEY_ACTION_ADDED, obj, userData))
+            queue.put((KEY_ACTION_ADDED, (obj, userData)))
 
         def objLostCallback(obj, userData, **kwargs):
-            queue.put((KEY_ACTION_LOST, obj, userData))
+            queue.put((KEY_ACTION_LOST, (obj, userData)))
 
         def objUpdatedCallback(obj, userData, **kwargs):
-            queue.put((KEY_ACTION_UPDATED, obj, userData))
+            queue.put((KEY_ACTION_UPDATED, (obj, userData)))
+
+        def imageUpdatedCallback(image, userData,  **kwargs):
+            queue.put((KEY_ACTION_IMAGE_UPDATED, (image, userData)))
+
 
         watcher: Watcher = Watcher(source=source, model=model, refreshDelay=camera.refresh,
                                    userData=Yolo2Mqtt._WatcherUserData(name), timelapseDir=camera.timelapseDir,
@@ -179,6 +202,8 @@ class Yolo2Mqtt:
         watcher.connectNewObjSignal(objAddedCallback)
         watcher.connectLostObjSignal(objLostCallback)
         watcher.connectUpdatedObjSignal(objUpdatedCallback)
+        if camera.publishImages:
+            watcher.connectImageUpdatedSignal(imageUpdatedCallback)
         watcher.run()
 
 

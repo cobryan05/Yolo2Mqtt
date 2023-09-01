@@ -2,11 +2,11 @@
 from dataclasses import dataclass, field
 
 # Only keys in this list will be in the config. Casing must match dataclasses
-validKeys = ["mqtt", "address", "port", "prefix", "events", "detections",
+validKeys = ["mqtt", "address", "port", "prefix", "events", "detections", "images",
              "rtspSimpleServer", "apiHost", "apiPort",
              "homeAssistant", "discoveryEnabled", "discoveryPrefix", "entityPrefix",
              "interactions", "slots", "threshold", "minTime", "expireTime",
-             "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec", "timelapseDir", "timelapseInterval",
+             "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec", "timelapseDir", "timelapseInterval", "publishImages",
              "models", "path", "width", "labels",
              "recordingManager", "mediaRoot", "makeSymlinks", "keepVideosDays",
              "yolo", "device", "multiprocessing"]
@@ -25,6 +25,7 @@ class Mqtt:
     prefix: str = "myhome/ObjectTrackers"
     events: str = "events"
     detections: str = "detections"
+    images: str = "images"
 
 
 @dataclass
@@ -67,6 +68,7 @@ class Camera:
     rewindSec: int = 20
     timelapseDir: str = None
     timelapseInterval: int = 0
+    publishImages: bool = False
 
 
 @dataclass
