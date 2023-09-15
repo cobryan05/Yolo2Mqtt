@@ -140,6 +140,7 @@ cameras:
     # timelapseDir: None # Path to save periodic images from the camera stream
     # timelapseInterval: 0 # Interval to save timelapses to timelapseDir
     # publishImages: false # Publish images to mqtt
+    # maxNoFrameSec: 30 # Number of seconds without a frame before restarting
 
 
 # Interactions define the events that can be raised when objects overlap

@@ -39,7 +39,7 @@ class Watcher:
     class _DetectionInfo:
         detection: WatchedObject.Detection
 
-    def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, userData=None, timelapseDir: str = None, timelapseInterval: int = -1, debug: bool = False):
+    def __init__(self, source: Source, model: YoloInference, refreshDelay: float = 1.0, userData=None, timelapseDir: str = None, timelapseInterval: int = -1, debug: bool = False, maxNoFrameSec: int = 30):
         self._source: Source = source
         self._model: YoloInference = model
         self._delay: float = refreshDelay
@@ -49,6 +49,7 @@ class Watcher:
         self._debug = debug
         self._timelapseDir: str = timelapseDir
         self._timelapseInterval: int = timelapseInterval
+        self._maxNoFrameInterval: int = maxNoFrameSec
         self._newObjSignal: Signal = Signal(args=['obj', 'userData'])
         self._lostObjSignal: Signal = Signal(args=['obj', 'userData'])
         self._updatedObjSignal: Signal = Signal(args=['obj', 'userData'])
@@ -97,6 +98,7 @@ class Watcher:
         trackTimeStats: ValueStatTracker = ValueStatTracker()
         inferTimeStats: ValueStatTracker = ValueStatTracker()
         forceInference: bool = True  # First loop always runs inference
+        lastFrameTime = time.time()
         lastTimelapse = time.time()
         nextTimelapse = float("inf")
         if self._timelapseDir is not None and self._timelapseInterval > 0:
@@ -114,14 +116,22 @@ class Watcher:
             try:
                 startTime = time.time()
                 img = self._source.getNextFrame()
-                fetchTimeStats.addValue(time.time() - startTime)
-
-                if time.time() > nextTimelapse:
-                    self.saveTimelapse(img)
-                    nextTimelapse = time.time() + self._timelapseInterval
+                lastFrameTime = time.time()
+                fetchTimeStats.addValue(lastFrameTime - startTime)
             except Exception as e:
                 logger.error(f"Exception getting image for {self._source}: {str(e)}")
+                if time.time() - lastFrameTime > self._maxNoFrameInterval:
+                    logger.error(f"Timeout exceeded! It has been {time.time() - lastFrameTime} since last frame! Restarting source...")
+                    self._source.restart()
                 continue
+
+            if time.time() > nextTimelapse:
+                try:
+                    self.saveTimelapse(img)
+                    nextTimelapse = time.time() + self._timelapseInterval
+                except Exception as e:
+                    logger.error(f"Failed to save timelapse for {self._source}: {str(e)}")
+
 
             # Just run object tracking if not scheduled to run inference
             runInference: bool = forceInference or runDetectCntdwn <= 0
@@ -274,10 +284,10 @@ class Watcher:
                     cv2.imshow(dbgWin, dbgImg)
                     cv2.waitKey(1)
 
-            logger.debug(f"---End of frame {frameCnt}---")
+            logger.debug(f"---End of frame {frameCnt} [{self._source}]---")
             frameCnt += 1
 
-        logger.info("Exit")
+        logger.info(f"!!!Exit frame capture loop for {self._source}!!!")
 
     def saveTimelapse(self, img: np.array):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")

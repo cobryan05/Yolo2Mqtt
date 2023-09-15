@@ -6,3 +6,6 @@ import numpy as np
 class Source:
     def getNextFrame(self) -> np.array:
         raise NotImplementedError()
+
+    def restart(self):
+        raise NotImplementedError()
