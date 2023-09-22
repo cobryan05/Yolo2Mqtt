@@ -124,6 +124,10 @@ cameras:
     model: testModel
     # refresh: 1.0 # Seconds between grabbing a frame to process
     # rewindSec: 20  # seconds of rewind buffer to keep for camera. Determines how much preroll is recorded when an event is detected.
+    # timelapseDir: None # Path to save periodic images from the camera stream
+    # timelapseInterval: 0 # Interval to save timelapses to timelapseDir
+    # publishImages: false # Publish images to mqtt
+    # maxNoFrameSec: 30 # Number of seconds without a frame before restarting
 #   exampleImage:  # Image cameras refresh a URL to get images
 #     imageUrl: https://192.168.15.75/cgi-bin/currentpic.cgi
 #     username: admin   # HTTP basic auth
@@ -137,10 +141,6 @@ cameras:
 #     - "./testVideo3.mkv"
 #     refresh: 0.1 # Seconds between frames
 #     model: testModel
-    # timelapseDir: None # Path to save periodic images from the camera stream
-    # timelapseInterval: 0 # Interval to save timelapses to timelapseDir
-    # publishImages: false # Publish images to mqtt
-    # maxNoFrameSec: 30 # Number of seconds without a frame before restarting
 
 
 # Interactions define the events that can be raised when objects overlap
