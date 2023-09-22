@@ -55,7 +55,7 @@ class MqttClient:
             publish_topic = topic
         else:
             publish_topic = "{}/{}".format(self._prefix, topic)
-        logger.debug("Publishing {} value of {}".format(publish_topic, value))
+        logger.debug(f"Publishing {publish_topic} value of {value if isinstance(value, str) else 'non-string type'}")
         self._mqtt.publish(publish_topic, value, retain=retain)
 
     def subscribe(self, topic: str, callback: Callable[[str], None]):
