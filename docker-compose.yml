@@ -23,7 +23,7 @@ services:
     environment:
       - TZ=America/Chicago
     depends_on:
-      - mqtt2
+      - mqtt
     restart: always
     # ports:
     #   - "8554:8554"  # Uncomment to expose internal RTSP server
