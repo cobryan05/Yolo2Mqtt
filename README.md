@@ -38,7 +38,7 @@ and the example interactions are some nonsense made with default labels. Any use
 
 ## RTSP Proxy
 
-The Docker container internally runs an RTSP Proxy on port 8554. If a port is forwarded to 8554 on Docker container, then any RTSP camera in the config.yml should be proxied at, eg <hostIp>:8554/<cameraName>
+The Docker container internally runs an RTSP Proxy on port 8554. If a port is forwarded to 8554 on Docker container, then any RTSP camera in the config.yml should be proxied at, eg \<hostIp\>:8554/\<cameraName\>
 
 
 ## Home Assistant Integration
