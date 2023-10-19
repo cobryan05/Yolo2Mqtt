@@ -8,7 +8,7 @@ RUN sudo apt-get update \
     && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y libsm6
 
 # Copy individual apps
-COPY --from=bluenviron/mediamtx /mediamtx /usr/bin/rtsp-simple-server
+COPY --from=bluenviron/mediamtx:1.2.0 /mediamtx /usr/bin/rtsp-simple-server
 
 # Install python requirements
 COPY requirements.txt .
