@@ -20,11 +20,18 @@ The minimal commands to get running would are:
 
 >     $ git clone --recursive https://github.com/cobryan05/Yolo2Mqtt.git
 >     $ cd Yolo2Mqtt
->     Yolo2Mqtt$ docker build . -t yolo2mqtt
+>     Yolo2Mqtt$ docker-compose build
 >     Yolo2Mqtt$ docker-compose up
 
 
 This will build the docker container and run the default configuration.
+
+
+The default configuration will use YoloV8 and auto-download a sample model then run sample recognitions on a static image.
+If all goes well, you should be able to connect to the mqtt broker at \<hostIp\>:1833. Detection information should be published
+to the topic /myhome/ObjectTrackers/.
+
+With the default sample config you should soon see topics identifying a dog riding a motorcycle.
 
 ## Configuration
 
@@ -35,6 +42,13 @@ All settings and default values (if any) are commented in config.defaults.yml.
 
 Note: This is meant to be used with a custom-trained YOLOv5 model. The default configuration will download the base yolov5 model,
 and the example interactions are some nonsense made with default labels. Any useful interactions will require a custom model.
+
+## CUDA GPU acceleration
+
+To enable CUDA acceleration (assuming CUDA is already working on your system):
+    * At the top of the Dockerfile change the FROM: image to the -cuda variant (then rebuild the image)
+    * In the docker-compose.yml uncomment the 'deploy' block to pass the GPU to Docker
+    * In the config.yml switch the 'yolo: device:' setting to 'cuda'
 
 ## RTSP Proxy
 

@@ -8,8 +8,8 @@ services:
     command: /usr/sbin/mosquitto -c /mosquitto-no-auth.conf
     networks:
       - yolo2mqtt
-    # ports:
-    #   - "1883:1883"  # Uncomment to expose MQTT server
+    ports:
+      - "1883:1883"  # Uncomment to expose MQTT server
 
   yolo2mqtt:
     container_name: yolo2mqtt
@@ -22,6 +22,18 @@ services:
     #   - /path/on/host/to/yolo2mqtt/recordings:/media
     environment:
       - TZ=America/Chicago
+    # Uncomment below if using CUDA
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #       - driver: nvidia
+    #         device_ids: ['0']
+    #         capabilities: [gpu]
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       - mqtt
     restart: always

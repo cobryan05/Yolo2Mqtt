@@ -120,15 +120,20 @@ models:
 # cameras defines how to get images and which model to use on those images
 # Only the RTSP is really supported. The others are used for testing
 cameras:
-  exampleRtsp: # Only RTSP cameras support recording videos
-    rtspUrl: rtsp://192.168.15.75:8554/unicast
+  sampleCam: # Displays a still iamage of a dog on a motorcylce
+    imageUrl: file:///app/dog_on_motorcycle.png
     model: testModel
-    # refresh: 1.0 # Seconds between grabbing a frame to process
-    # rewindSec: 20  # seconds of rewind buffer to keep for camera. Determines how much preroll is recorded when an event is detected.
-    # timelapseDir: None # Path to save periodic images from the camera stream
-    # timelapseInterval: 0 # Interval to save timelapses to timelapseDir
-    # publishImages: false # Publish images to mqtt
-    # maxNoFrameSec: 30 # Number of seconds without a frame before restarting
+    refresh: 1
+    publishImages: true
+#   exampleRtsp: # Only RTSP cameras support recording videos
+#      rtspUrl: rtsp://192.168.15.75:8554/unicast
+#      model: testModel
+#      refresh: 1.0 # Seconds between grabbing a frame to process
+#      rewindSec: 20  # seconds of rewind buffer to keep for camera. Determines how much preroll is recorded when an event is detected.
+#      timelapseDir: None # Path to save periodic images from the camera stream
+#      timelapseInterval: 0 # Interval to save timelapses to timelapseDir
+#      publishImages: false # Publish images to mqtt
+#      maxNoFrameSec: 30 # Number of seconds without a frame before restarting
 #   exampleImage:  # Image cameras refresh a URL to get images
 #     imageUrl: https://192.168.15.75/cgi-bin/currentpic.cgi
 #     username: admin   # HTTP basic auth
@@ -165,7 +170,7 @@ interactions:
         - car
         - motorcycle
         - horse
-    threshold: 0.8  # fraction of the smallest object that must overlap to count as an interaction
+    threshold: 0.3  # fraction of the smallest object that must overlap to count as an interaction
 
     # exactly how minTime and expireTime work may change as it is currently not great, but currently:
     #  When two slot items overlap by threshold, a timer is started.

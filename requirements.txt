@@ -1,6 +1,7 @@
 ffmpeg-python==0.2.0
 matplotlib==3.4.3
 numpy==1.23.0
+# remove the -headless on both opencv if debugging
 opencv-contrib-python-headless==4.8.1.78
 opencv-python-headless==4.8.1.78
 paho-mqtt==1.6.1

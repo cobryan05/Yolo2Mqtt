@@ -34,11 +34,11 @@ class MediaManager:
         ''' Constructor '''
         self._root: str = mediaRoot
         self._keepTime: int = daysToKeep
+        self._clearMediaTimer = threading.Timer(0.0, self._clearOldMedia)
 
         os.makedirs(self.videoPath, exist_ok=True)
         os.makedirs(self.symlinkPath, exist_ok=True)
 
-        self._clearMediaTimer = threading.Timer(0.0, self._clearOldMedia)
         self._clearMediaTimer.start()
 
     def __del__(self):
