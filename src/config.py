@@ -7,7 +7,7 @@ validKeys = ["mqtt", "address", "port", "prefix", "events", "detections", "image
              "homeAssistant", "discoveryEnabled", "discoveryPrefix", "entityPrefix",
              "interactions", "slots", "threshold", "minTime", "expireTime",
              "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec", "timelapseDir", "timelapseInterval", "publishImages", "maxNoFrameSec",
-             "models", "path", "width", "labels",
+             "models", "path", "width", "labels", "yoloVersion",
              "recordingManager", "mediaRoot", "makeSymlinks", "keepVideosDays",
              "yolo", "device", "multiprocessing"]
 
@@ -20,7 +20,7 @@ class Yolo:
 
 @dataclass
 class Mqtt:
-    address: str
+    address: str = "mqtt"
     port: int = 1883
     prefix: str = "myhome/ObjectTrackers"
     events: str = "events"
@@ -77,6 +77,7 @@ class Model:
     path: str = "models/yolov5s.pt"
     width: int = 640
     labels: list[str] = field(default_factory=list)
+    yoloVersion: int = 8
 
 
 class Config:

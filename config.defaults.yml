@@ -32,8 +32,9 @@ yolo:
 
 models:
   testModel: # unique identifier for this model. This name will be referenced in 'cameras'
-    path: models/yolov5m.pt  # path to YOLOv5 model to use. If not locally found it will try to download
+    path: models/yolov8m.pt  # path to YOLO model to use. If not locally found Yolov5/8 will try to download
     # width: 640  # width model was trained with
+    # yoloVersion: 8  # can be set to 5, 7 or 8 to load different YOLO versions
     labels: # list of labels for the model
     - person
     - bicycle

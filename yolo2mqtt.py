@@ -17,7 +17,6 @@ scriptDir = pathlib.Path(__file__).parent.resolve()
 submodules_dir = os.path.join(scriptDir, "submodules")
 sys.path.append( scriptDir )
 sys.path.append(submodules_dir)
-sys.path.append(os.path.join(submodules_dir, "yolov5"))
 from trackerTools.yoloInference import YoloInference
 from src.config import Config, Camera
 from src.mqttClient import MqttClient
@@ -48,7 +47,11 @@ class Yolo2Mqtt:
         if args.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
 
-        config: dict = yaml.load(open(args.config), yaml.Loader)
+        try:
+            config: dict = yaml.load(open(args.config), yaml.Loader)
+        except Exception as e:
+            logger.error(f"Failed to load config file {args.config}! {e}")
+            config = {}
         self._config: Config = Config(config)
 
         # Switch to mp.dummy if requested
@@ -175,7 +178,8 @@ class Yolo2Mqtt:
 
         try:
             model = YoloInference(weights=modelInfo.path, imgSize=modelInfo.width,
-                                  labels=modelInfo.labels, device=config.Yolo.device)
+                                  labels=modelInfo.labels, device=config.Yolo.device,
+                                  yoloVersion=modelInfo.yoloVersion)
         except Exception as e:
             fatal(f"Failed to load model [{modelInfo.path}]: {e}")
 
