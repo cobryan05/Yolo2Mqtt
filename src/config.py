@@ -1,15 +1,53 @@
-''' Class to handle configuration '''
+""" Class to handle configuration """
 from dataclasses import dataclass, field
 
 # Only keys in this list will be in the config. Casing must match dataclasses
-validKeys = ["mqtt", "address", "port", "prefix", "events", "detections", "images",
-             "rtspSimpleServer", "apiHost", "apiPort",
-             "homeAssistant", "discoveryEnabled", "discoveryPrefix", "entityPrefix",
-             "interactions", "slots", "threshold", "minTime", "expireTime",
-             "cameras", "rtspUrl", "videoPath", "imageUrl", "refresh", "model", "username", "password", "rewindSec", "timelapseDir", "timelapseInterval", "publishImages", "maxNoFrameSec",
-             "models", "path", "width", "labels", "yoloVersion",
-             "recordingManager", "mediaRoot", "makeSymlinks", "keepVideosDays",
-             "yolo", "device", "multiprocessing"]
+validKeys = [
+    "mqtt",
+    "address",
+    "port",
+    "prefix",
+    "events",
+    "detections",
+    "images",
+    "rtspSimpleServer",
+    "apiHost",
+    "apiPort",
+    "homeAssistant",
+    "discoveryEnabled",
+    "discoveryPrefix",
+    "entityPrefix",
+    "interactions",
+    "slots",
+    "threshold",
+    "minTime",
+    "expireTime",
+    "cameras",
+    "rtspUrl",
+    "videoPath",
+    "imageUrl",
+    "refresh",
+    "model",
+    "username",
+    "password",
+    "rewindSec",
+    "timelapseDir",
+    "timelapseInterval",
+    "publishImages",
+    "maxNoFrameSec",
+    "models",
+    "path",
+    "width",
+    "labels",
+    "yoloVersion",
+    "recordingManager",
+    "mediaRoot",
+    "makeSymlinks",
+    "keepVideosDays",
+    "yolo",
+    "device",
+    "multiprocessing",
+]
 
 
 @dataclass
@@ -30,7 +68,7 @@ class Mqtt:
 
 @dataclass
 class RecordingManager:
-    mediaRoot: str = '/media'
+    mediaRoot: str = "/media"
     makeSymlinks: bool = True
     keepVideosDays: int = 14
 
@@ -98,18 +136,24 @@ class Config:
             self._interactions[key] = Interaction(**Config.validKeys(cfg))
 
         cfg = config.get("recordingManager", {})
-        self._recordingManager: RecordingManager = RecordingManager(**Config.validKeys(cfg))
+        self._recordingManager: RecordingManager = RecordingManager(
+            **Config.validKeys(cfg)
+        )
 
         cfg = config.get("homeAssistant", {})
         self._homeAssistant: HomeAssistant = HomeAssistant(**Config.validKeys(cfg))
-        self._homeAssistant.discoveryPrefix = self.homeAssistant.discoveryPrefix.rstrip('/')
+        self._homeAssistant.discoveryPrefix = self.homeAssistant.discoveryPrefix.rstrip(
+            "/"
+        )
 
         cfg = config.get("rtspSimpleServer", {})
-        self._rtspSimpleServer: RtspSimpleServer = RtspSimpleServer(**Config.validKeys(cfg))
+        self._rtspSimpleServer: RtspSimpleServer = RtspSimpleServer(
+            **Config.validKeys(cfg)
+        )
 
         cfg = config.get("mqtt", {})
         self._mqtt: Mqtt = Mqtt(**Config.validKeys(cfg))
-        self._mqtt.prefix = self._mqtt.prefix.rstrip('/')
+        self._mqtt.prefix = self._mqtt.prefix.rstrip("/")
 
         cfg = config.get("yolo", {})
         self._yolo: Yolo = Yolo(**Config.validKeys(cfg))

@@ -1,4 +1,4 @@
-''' Rtsp stream image source class, optionally proxied through an RtspSimpleServer '''
+""" Rtsp stream image source class, optionally proxied through an RtspSimpleServer """
 import cv2
 import logging
 import numpy as np
@@ -9,16 +9,21 @@ from collections.abc import Iterator
 from threading import Thread, Event, Lock
 
 from src.rtspSimpleServer import RtspSimpleServer
-from . source import Source
+from .source import Source
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("rtspSource")
 
 
 class RtspSource(Source):
-
-    def __init__(self, name: str, rtspUrl: str, rtspApi: RtspSimpleServer = None, rewindBufSec: int = 0):
-        ''' RtspSimpleServer will be configured to host proxy stream for rtspUrl '''
+    def __init__(
+        self,
+        name: str,
+        rtspUrl: str,
+        rtspApi: RtspSimpleServer = None,
+        rewindBufSec: int = 0,
+    ):
+        """RtspSimpleServer will be configured to host proxy stream for rtspUrl"""
         self._name = name
 
         self._rtspUrl = rtspUrl
@@ -46,8 +51,10 @@ class RtspSource(Source):
         return f"RtspSource [{self._name}]"
 
     def _getCap(self) -> cv2.VideoCapture:
-        ''' Returns CV2 video capture object for RTSP stream '''
-        return cv2.VideoCapture(self._proxyRtspUrl if self._proxyRtspUrl else self._rtspUrl, cv2.CAP_FFMPEG)
+        """Returns CV2 video capture object for RTSP stream"""
+        return cv2.VideoCapture(
+            self._proxyRtspUrl if self._proxyRtspUrl else self._rtspUrl, cv2.CAP_FFMPEG
+        )
 
     def _restartThread(self):
         if self._thread:
@@ -55,14 +62,20 @@ class RtspSource(Source):
             self._thread.join()
             self._stopEvent.clear()
 
-        self._thread: Thread = Thread(target=self._captureThread, name=f"RtspCaptureThread_{self._name}")
+        self._thread: Thread = Thread(
+            target=self._captureThread, name=f"RtspCaptureThread_{self._name}"
+        )
         self._thread.start()
 
     def _configRtspProxy(self):
         # Attempt to proxy through RtspSimpleServer, otherwise just direct connect
-        self._proxyRtspUrl = RtspSource._getProxyUrl(self._name, self._rtspApi, self._rtspUrl)
+        self._proxyRtspUrl = RtspSource._getProxyUrl(
+            self._name, self._rtspApi, self._rtspUrl
+        )
         if self._proxyRtspUrl is None:
-            logger.info(f"RtspSource {self._name} not using proxy! URL is [{self._proxyRtspUrl}]")
+            logger.info(
+                f"RtspSource {self._name} not using proxy! URL is [{self._proxyRtspUrl}]"
+            )
         else:
             logger.info(f"Proxying [{self._rtspUrl}] as [{self._proxyRtspUrl}]")
             time.sleep(0.25)  # Give proxy a chance to initialize
@@ -94,11 +107,13 @@ class RtspSource(Source):
                 retryTime = minRetryTime
                 self._frameAvail.set()
             else:
-                logger.warning(f"{self._name}: Failed to grab frame. Retrying in {retryTime}s")
+                logger.warning(
+                    f"{self._name}: Failed to grab frame. Retrying in {retryTime}s"
+                )
                 if True or not self._vid.isOpened():
                     self._vid = self._getCap()
                 time.sleep(retryTime)
-                retryTime = min(maxRetryTime, retryTime*2)
+                retryTime = min(maxRetryTime, retryTime * 2)
 
     def getNextFrame(self) -> np.array:
         frame = None

@@ -1,4 +1,4 @@
-''' Helps manage media file paths '''
+""" Helps manage media file paths """
 import logging
 import itertools
 import os
@@ -16,7 +16,8 @@ logger = logging.getLogger("MediaManager")
 
 class MediaManager:
     eventNameRe: re.Pattern = re.compile(
-        r"(?P<timestamp>\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d)___(?P<cameraName>.*)___(?P<interactionName>.*)___(?P<slotList>.*)\.mp4")
+        r"(?P<timestamp>\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d)___(?P<cameraName>.*)___(?P<interactionName>.*)___(?P<slotList>.*)\.mp4"
+    )
     timestampFmt: str = "%Y-%m-%d_%H-%M-%S"
 
     @dataclass
@@ -28,10 +29,12 @@ class MediaManager:
 
         @property
         def eventName(self) -> str:
-            return f"{self.cameraName}___{self.interactionName}___{'__'.join(self.slots)}"
+            return (
+                f"{self.cameraName}___{self.interactionName}___{'__'.join(self.slots)}"
+            )
 
     def __init__(self, mediaRoot: str, daysToKeep: int):
-        ''' Constructor '''
+        """Constructor"""
         self._root: str = mediaRoot
         self._keepTime: int = daysToKeep
         self._clearMediaTimer = threading.Timer(0.0, self._clearOldMedia)
@@ -54,11 +57,14 @@ class MediaManager:
         return os.path.join(self._root, "symlinks")
 
     def createSymlinks(self, eventParams: EventParams, videoPath: str) -> None:
-        ''' Create a hierarchy of symlinks for an EventParam pointing to a vidoe file'''
+        """Create a hierarchy of symlinks for an EventParam pointing to a vidoe file"""
         rootPath = self.symlinkPath
 
         videoName = os.path.basename(videoPath)
-        parts = [eventParams.cameraName, eventParams.interactionName] + eventParams.slots
+        parts = [
+            eventParams.cameraName,
+            eventParams.interactionName,
+        ] + eventParams.slots
         symlinks = []
 
         for permutation in itertools.permutations(parts):
@@ -78,7 +84,7 @@ class MediaManager:
             logger.error(f"Failed to create symlinks for {videoPath}: {e}")
 
     def getRecordingPath(self, eventParams: EventParams) -> str:
-        ''' Returns the filename that an event should be recorded to '''
+        """Returns the filename that an event should be recorded to"""
         timestamp = eventParams.timestamp.strftime(MediaManager.timestampFmt)
         fileName = f"{timestamp}___{eventParams.eventName}.mp4"
         return os.path.join(self.videoPath, fileName)
@@ -92,10 +98,15 @@ class MediaManager:
         interactionName = match["interactionName"]
         slots = match["slotList"].split("__")
 
-        return MediaManager.EventParams(cameraName=cameraName, interactionName=interactionName, slots=slots, timestamp=timestamp)
+        return MediaManager.EventParams(
+            cameraName=cameraName,
+            interactionName=interactionName,
+            slots=slots,
+            timestamp=timestamp,
+        )
 
     def _clearOldMedia(self) -> None:
-        ''' Remove any expired media files'''
+        """Remove any expired media files"""
         expiredFiles = MediaManager._getExpiredFiles(self.videoPath, self._keepTime)
         for file in expiredFiles:
             logger.debug(f"Removing expired file {file}")
@@ -115,13 +126,17 @@ class MediaManager:
             emptyDirs = MediaManager._getEmptyDirs(self.symlinkPath)
 
         # Schedule next clean 1 day from now
-        self._clearMediaTimer = threading.Timer(timedelta(days=1).total_seconds(), self._clearOldMedia)
+        self._clearMediaTimer = threading.Timer(
+            timedelta(days=1).total_seconds(), self._clearOldMedia
+        )
         self._clearMediaTimer.start()
 
     @staticmethod
-    def _getExpiredFiles(path: str,  age: int, recurse: bool = True) -> list[str]:
+    def _getExpiredFiles(path: str, age: int, recurse: bool = True) -> list[str]:
         expiredList: list[str] = []
-        expiredTime = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=age)
+        expiredTime = datetime.today().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=age)
         for root, dirs, files in os.walk(path):
             for file in files:
                 try:

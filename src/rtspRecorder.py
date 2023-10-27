@@ -1,4 +1,4 @@
-''' Saves an RTSP stream to disk '''
+""" Saves an RTSP stream to disk """
 
 
 import logging
@@ -7,18 +7,20 @@ import psutil
 import signal
 import subprocess
 import sys
+
 # Define SIGKILL on windows
 if sys.platform == "win32":
     signal.SIGKILL = signal.SIGTERM
 import time
 
 import ffmpeg
+
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("rtspRecorder")
 
 
 def killFfmpeg(pid: int) -> None:
-    ''' Try various signals to get ffmpeg to stop '''
+    """Try various signals to get ffmpeg to stop"""
     sigs = [signal.SIGINT, signal.SIGTERM, signal.SIGKILL]
     for sig in sigs:
         try:
@@ -56,7 +58,7 @@ class RtspRecorder:
             self._proc = None
 
     def running(self) -> bool:
-        ''' checks if ffmpeg is actively running '''
+        """checks if ffmpeg is actively running"""
         return psutil.pid_exists(self._proc.pid)
 
     def __del__(self):

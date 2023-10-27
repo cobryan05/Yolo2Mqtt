@@ -1,10 +1,10 @@
-''' Class to check for configured interactions '''
+""" Class to check for configured interactions """
 import numpy as np
 from dataclasses import dataclass, field
 
 from trackerTools.bbox import BBox
 
-from . watchedObject import WatchedObject
+from .watchedObject import WatchedObject
 from .config import Config, Interaction
 
 
@@ -27,8 +27,10 @@ class ContextChecker:
     def getEvents(self, objects: list[WatchedObject]) -> list[EventInfo]:
 
         # Recursively return list of all possible slot filling combinations
-        def findMatches(overlapIdxs: list[list[int]], slots: list[list[str]], maxRecurse: int = 100) -> list[list[int]]:
-            assert(len(overlapIdxs) == len(slots))
+        def findMatches(
+            overlapIdxs: list[list[int]], slots: list[list[str]], maxRecurse: int = 100
+        ) -> list[list[int]]:
+            assert len(overlapIdxs) == len(slots)
             if maxRecurse == 0:
                 raise RecursionError()
 
@@ -43,7 +45,11 @@ class ContextChecker:
                     else:
                         overlapIdxLeft = overlapIdxs.copy()
                         overlapIdxLeft.pop(enumIdx)
-                        matches = findMatches(overlapIdxs=overlapIdxLeft, slots=slots[1:], maxRecurse=maxRecurse-1)
+                        matches = findMatches(
+                            overlapIdxs=overlapIdxLeft,
+                            slots=slots[1:],
+                            maxRecurse=maxRecurse - 1,
+                        )
 
                         for matchList in matches:
                             ret.append([overlapIdx] + matchList)
@@ -63,18 +69,19 @@ class ContextChecker:
                 matches = findMatches(overlapIdxs, interaction.slots)
                 for match in matches:
                     objList = [objects[idx] for idx in match]
-                    eventInfo: ContextChecker.EventInfo = ContextChecker.EventInfo(name=key,
-                                                                                   event=interaction, slotsObjs=objList)
+                    eventInfo: ContextChecker.EventInfo = ContextChecker.EventInfo(
+                        name=key, event=interaction, slotsObjs=objList
+                    )
                     triggeredEvents.append(eventInfo)
 
         return triggeredEvents
 
     @staticmethod
     def getOverlaps(bboxes: list[BBox]) -> list[OverlapInfo]:
-        ''' returns a matrix of overlap IoS for BBox pairs'''
+        """returns a matrix of overlap IoS for BBox pairs"""
         retMatrix = np.zeros((len(bboxes), len(bboxes)), dtype=float)
         for idx1, bbox1 in enumerate(bboxes):
-            for idx2, bbox2 in enumerate(bboxes[idx1+1:]):
+            for idx2, bbox2 in enumerate(bboxes[idx1 + 1 :]):
                 idx2 += 1 + idx1
                 ios = ContextChecker.calcIoS(bbox1, bbox2)
                 retMatrix[idx1][idx2] = ios
@@ -82,12 +89,14 @@ class ContextChecker:
         overlaps: list[OverlapInfo] = []
         intersects = np.where(retMatrix != 0.0)
         for idxPair in zip(intersects[0], intersects[1]):
-            overlaps.append(OverlapInfo(list(idxPair), retMatrix[idxPair[0]][idxPair[1]]))
+            overlaps.append(
+                OverlapInfo(list(idxPair), retMatrix[idxPair[0]][idxPair[1]])
+            )
         return overlaps
 
     @staticmethod
     def calcIoS(boxA: BBox, boxB: BBox) -> float:
-        ''' Calculate the area of overlap over the smaller area '''
+        """Calculate the area of overlap over the smaller area"""
         aX1, aY1, aX2, aY2 = boxA.asRX1Y1X2Y2()
         bX1, bY1, bX2, bY2 = boxB.asRX1Y1X2Y2()
 

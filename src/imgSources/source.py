@@ -1,4 +1,4 @@
-''' Image Source Interface Class'''
+""" Image Source Interface Class"""
 
 import numpy as np
 

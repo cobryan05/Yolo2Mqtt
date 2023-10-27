@@ -38,6 +38,7 @@ KEY_ACTION_LOST = "lost"
 KEY_ACTION_UPDATED = "updated"
 KEY_ACTION_IMAGE_UPDATED = "image_updated"
 
+
 class Yolo2Mqtt:
     @dataclass
     class _WatcherUserData:
@@ -63,17 +64,23 @@ class Yolo2Mqtt:
         self._mqttDetTopic = self._config.Mqtt.detections
         self._mqttImageTopic = self._config.Mqtt.images
 
-        logger.info(f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
+        logger.info(
+            f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}..."
+        )
 
-        self._mqtt: MqttClient = MqttClient(broker_address=self._config.Mqtt.address,
-                                            broker_port=self._config.Mqtt.port,
-                                            prefix=self._config.Mqtt.prefix)
+        self._mqtt: MqttClient = MqttClient(
+            broker_address=self._config.Mqtt.address,
+            broker_port=self._config.Mqtt.port,
+            prefix=self._config.Mqtt.prefix,
+        )
         self._queue: Queue[tuple(str, WatchedObject)] = Queue()
 
         self._workers: list[Process] = []
         for key, cameraInfo in self._config.cameras.items():
-            newWorker = Process(target=Yolo2Mqtt._workerProc, args=(
-                key, self._queue, self._config, cameraInfo, args.debug))
+            newWorker = Process(
+                target=Yolo2Mqtt._workerProc,
+                args=(key, self._queue, self._config, cameraInfo, args.debug),
+            )
             self._workers.append(newWorker)
 
     def _objAddedCallback(self, obj, userData, **kwargs):
@@ -98,17 +105,21 @@ class Yolo2Mqtt:
         userData: Yolo2Mqtt._WatcherUserData = userData
         output_buffer = io.BytesIO()
         image.save(output_buffer, format="PNG")
-        self._mqtt.publish(self._getImageTopic(userData), output_buffer.getvalue(), retain=False)
+        self._mqtt.publish(
+            self._getImageTopic(userData), output_buffer.getvalue(), retain=False
+        )
 
-    def _getImageTopic(self, userData: _WatcherUserData ) -> str:
+    def _getImageTopic(self, userData: _WatcherUserData) -> str:
         return f"{self._mqttImageTopic}/{userData.name}/image"
 
     def _getDetTopic(self, obj: WatchedObject, userData: _WatcherUserData) -> str:
         return f"{self._mqttDetTopic}/{userData.name}/{obj.objId}"
 
     @staticmethod
-    def _getSource(name: str, cameraConfig: Camera, rtspApi: RtspSimpleServer = None) -> Source:
-        ''' Returns a source for the given camera config'''
+    def _getSource(
+        name: str, cameraConfig: Camera, rtspApi: RtspSimpleServer = None
+    ) -> Source:
+        """Returns a source for the given camera config"""
         if cameraConfig.rtspUrl is not None:
             return RtspSource(name=name, rtspUrl=cameraConfig.rtspUrl, rtspApi=rtspApi)
 
@@ -116,7 +127,11 @@ class Yolo2Mqtt:
             return VideoSource(cameraConfig.videoPath)
 
         if cameraConfig.imageUrl is not None:
-            return UrlSource(cameraConfig.imageUrl, user=cameraConfig.username, password=cameraConfig.password)
+            return UrlSource(
+                cameraConfig.imageUrl,
+                user=cameraConfig.username,
+                password=cameraConfig.password,
+            )
 
         return None
 
@@ -131,7 +146,11 @@ class Yolo2Mqtt:
             except Empty as e:
                 data = None
                 # Check if workers are running
-                lostProcIdxs = [idx for idx, worker in enumerate(reversed(self._workers)) if not worker.is_alive()]
+                lostProcIdxs = [
+                    idx
+                    for idx, worker in enumerate(reversed(self._workers))
+                    if not worker.is_alive()
+                ]
                 for idx in lostProcIdxs:
                     proc = self._workers[idx]
                     logger.warning(f"Worker {idx}:{proc.name} has exited.")
@@ -158,7 +177,9 @@ class Yolo2Mqtt:
                 break
 
     @staticmethod
-    def _workerProc(name: str, queue: Queue, config: Config, camera: Camera, debug: bool = False) -> None:
+    def _workerProc(
+        name: str, queue: Queue, config: Config, camera: Camera, debug: bool = False
+    ) -> None:
         print(f"Background thread {name}")
         logger = logging.getLogger(f"Worker_{name}")
 
@@ -167,8 +188,10 @@ class Yolo2Mqtt:
             raise Exception(msg)
 
         try:
-            rtspApi = RtspSimpleServer(apiHost=config.RtspSimpleServer.apiHost,
-                                       apiPort=config.RtspSimpleServer.apiPort)
+            rtspApi = RtspSimpleServer(
+                apiHost=config.RtspSimpleServer.apiHost,
+                apiPort=config.RtspSimpleServer.apiPort,
+            )
         except Exception as e:
             rtspApi = None
 
@@ -177,9 +200,13 @@ class Yolo2Mqtt:
             fatal(f"Could not find model configuration [{camera.model}]")
 
         try:
-            model = YoloInference(weights=modelInfo.path, imgSize=modelInfo.width,
-                                  labels=modelInfo.labels, device=config.Yolo.device,
-                                  yoloVersion=modelInfo.yoloVersion)
+            model = YoloInference(
+                weights=modelInfo.path,
+                imgSize=modelInfo.width,
+                labels=modelInfo.labels,
+                device=config.Yolo.device,
+                yoloVersion=modelInfo.yoloVersion,
+            )
         except Exception as e:
             fatal(f"Failed to load model [{modelInfo.path}]: {e}")
 
@@ -196,13 +223,18 @@ class Yolo2Mqtt:
         def objUpdatedCallback(obj, userData, **kwargs):
             queue.put((KEY_ACTION_UPDATED, (obj, userData)))
 
-        def imageUpdatedCallback(image, userData,  **kwargs):
+        def imageUpdatedCallback(image, userData, **kwargs):
             queue.put((KEY_ACTION_IMAGE_UPDATED, (image, userData)))
 
-
-        watcher: Watcher = Watcher(source=source, model=model, refreshDelay=camera.refresh,
-                                   userData=Yolo2Mqtt._WatcherUserData(name), timelapseDir=camera.timelapseDir,
-                                   timelapseInterval=camera.timelapseInterval, debug=debug)
+        watcher: Watcher = Watcher(
+            source=source,
+            model=model,
+            refreshDelay=camera.refresh,
+            userData=Yolo2Mqtt._WatcherUserData(name),
+            timelapseDir=camera.timelapseDir,
+            timelapseInterval=camera.timelapseInterval,
+            debug=debug,
+        )
         watcher.connectNewObjSignal(objAddedCallback)
         watcher.connectLostObjSignal(objLostCallback)
         watcher.connectUpdatedObjSignal(objUpdatedCallback)
@@ -212,12 +244,19 @@ class Yolo2Mqtt:
 
 
 def parseArgs():
-    parser = argparse.ArgumentParser(description="Run object tracking on image streams",
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--config', help="Configuration file",
-                        required=False, default="config.yml")
-    parser.add_argument('--debug', help="Show labeled images", action='store_true', default=False)
-    parser.add_argument('--verbose', '-v', help="Verbose", action='store_true', default=False)
+    parser = argparse.ArgumentParser(
+        description="Run object tracking on image streams",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--config", help="Configuration file", required=False, default="config.yml"
+    )
+    parser.add_argument(
+        "--debug", help="Show labeled images", action="store_true", default=False
+    )
+    parser.add_argument(
+        "--verbose", "-v", help="Verbose", action="store_true", default=False
+    )
 
     return parser.parse_args()
 

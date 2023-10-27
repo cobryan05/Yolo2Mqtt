@@ -1,4 +1,4 @@
-''' Class to track statistics about a series of floats'''
+""" Class to track statistics about a series of floats"""
 from __future__ import annotations
 import math
 import copy
@@ -29,7 +29,7 @@ class ValueStatTracker:
         prevAvg = self._avg
         self._sum += value
         self._avg += (value - prevAvg) / self._count
-        self._sum_sq += (value - prevAvg)*(value-self._avg)
+        self._sum_sq += (value - prevAvg) * (value - self._avg)
 
         if value < self._min:
             self._min = value

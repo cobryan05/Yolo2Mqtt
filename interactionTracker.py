@@ -90,18 +90,23 @@ class InteractionTracker:
         self._mqttEvents = self._config.Mqtt.events
         self._mqttDet = self._config.Mqtt.detections
 
-        logger.info(f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}...")
+        logger.info(
+            f"Connecting to MQTT broker at {self._config.Mqtt.address}:{self._config.Mqtt.port}..."
+        )
 
-        self._mqtt: MqttClient = MqttClient(broker_address=self._config.Mqtt.address,
-                                            broker_port=self._config.Mqtt.port,
-                                            prefix=self._config.Mqtt.prefix)
+        self._mqtt: MqttClient = MqttClient(
+            broker_address=self._config.Mqtt.address,
+            broker_port=self._config.Mqtt.port,
+            prefix=self._config.Mqtt.prefix,
+        )
 
         self._mqtt.subscribe(f"{self._mqttDet}/#", self.mqttCallback)
 
         self._discoveryPublished: set[str] = set()
         self._contexts: dict[str, Context] = {}
         self._topicRe: re.Pattern = re.compile(
-            rf"{self._config.Mqtt.prefix}/{self._mqttDet}/(?P<{RE_GROUP_CAMERA}>[^/]+)/(?P<{RE_GROUP_OBJID}>.*)")
+            rf"{self._config.Mqtt.prefix}/{self._mqttDet}/(?P<{RE_GROUP_CAMERA}>[^/]+)/(?P<{RE_GROUP_OBJID}>.*)"
+        )
 
     def run(self):
         while True:
@@ -120,9 +125,9 @@ class InteractionTracker:
                 for event in newEvents:
                     slotLabels = [obj.label for obj in event.slotsObjs]
                     objIds = [obj.objId for obj in event.slotsObjs]
-                    eventKey: EventKey = EventKey(key=event.name,
-                                                  slots=slotLabels,
-                                                  objIds=objIds)
+                    eventKey: EventKey = EventKey(
+                        key=event.name, slots=slotLabels, objIds=objIds
+                    )
                     # Don't process multiple detections of the same event
                     if eventKey in usedKeys:
                         continue
@@ -134,7 +139,11 @@ class InteractionTracker:
                         trackedEvent.firstTimestamp = time.time()
                         context.events[eventKey] = trackedEvent
                     else:
-                        if not trackedEvent.published and time.time() > trackedEvent.firstTimestamp + event.event.minTime:
+                        if (
+                            not trackedEvent.published
+                            and time.time()
+                            > trackedEvent.firstTimestamp + event.event.minTime
+                        ):
                             trackedEvent.published = True
                             self.publishEvent(context, eventKey)
                             self.publishDiscoveryEvent(context, eventKey, "ON")
@@ -146,7 +155,9 @@ class InteractionTracker:
                     interaction = self._config.interactions[eventKey.key]
 
                     # If this even expired then clear it from MQTT and remove it from the context
-                    if time.time() > trackedEvent.lastTimestamp + float(interaction.expireTime):
+                    if time.time() > trackedEvent.lastTimestamp + float(
+                        interaction.expireTime
+                    ):
                         if trackedEvent.published:
                             self.publishEvent(context, eventKey, clear=True)
                             self.publishDiscoveryEvent(context, eventKey, "OFF")
@@ -169,21 +180,29 @@ class InteractionTracker:
         if not self._config.homeAssistant.discoveryEnabled:
             return
         entityId = self._createEntityId(context, eventKey)
-        mqttConfigTopic = f"{self._config.homeAssistant.discoveryPrefix}/binary_sensor/{entityId}"
+        mqttConfigTopic = (
+            f"{self._config.homeAssistant.discoveryPrefix}/binary_sensor/{entityId}"
+        )
         stateTopic = f"{mqttConfigTopic}/state"
         self._mqtt.publish(stateTopic, state, retain=True, absoluteTopic=True)
         if entityId not in self._discoveryPublished:
             self._discoveryPublished.add(entityId)
             configTopic = f"{mqttConfigTopic}/config"
             friendlyName = f"{self._config.homeAssistant.entityPrefix} - [{eventKey.name.replace('/','|')}] [{context.name}]"
-            entityCfg = {"name": friendlyName, "friendly_name": friendlyName,
-                         "unique_id": entityId, "state_topic": stateTopic}
-            self._mqtt.publish(configTopic, json.dumps(entityCfg), retain=True, absoluteTopic=True)
+            entityCfg = {
+                "name": friendlyName,
+                "friendly_name": friendlyName,
+                "unique_id": entityId,
+                "state_topic": stateTopic,
+            }
+            self._mqtt.publish(
+                configTopic, json.dumps(entityCfg), retain=True, absoluteTopic=True
+            )
 
     def _createEntityId(self, context: Context, eventKey: EventKey) -> str:
         # Remove dashes and underscores from names
-        charsToRemove = ['-', '_']
-        replaceDict = {ord(x): '' for x in charsToRemove}
+        charsToRemove = ["-", "_"]
+        replaceDict = {ord(x): "" for x in charsToRemove}
         contextName = context.name.translate(replaceDict)
         eventName = eventKey.name.translate(replaceDict).replace("/", "-")
 
@@ -202,16 +221,22 @@ class InteractionTracker:
             context = self._contexts.get(cameraName, None)
             # New context?
             if context is None:
-                context = Context(name=cameraName, checker=ContextChecker(self._config.interactions))
+                context = Context(
+                    name=cameraName, checker=ContextChecker(self._config.interactions)
+                )
                 self._contexts[cameraName] = context
 
             if len(msg.payload) == 0:
                 context.objectMap.pop(objId, None)
-                logger.info(f"{cameraName} Removed {objId}. Tracking {len(context.objectMap)} objects.")
+                logger.info(
+                    f"{cameraName} Removed {objId}. Tracking {len(context.objectMap)} objects."
+                )
             else:
                 objInfo = WatchedObject.fromJson(msg.payload.decode())
                 if objId not in context.objectMap:
-                    logger.info(f"{cameraName} Added {objId}. Tracking {len(context.objectMap)} objects.")
+                    logger.info(
+                        f"{cameraName} Added {objId}. Tracking {len(context.objectMap)} objects."
+                    )
                 context.objectMap[objId] = TrackedObject(obj=objInfo)
 
     @staticmethod
@@ -227,12 +252,19 @@ class InteractionTracker:
 
 
 def parseArgs():
-    parser = argparse.ArgumentParser(description="Run object tracking on image streams",
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--config', help="Configuration file",
-                        required=False, default="config.yml")
-    parser.add_argument('--debug', help="Show labeled images", action='store_true', default=False)
-    parser.add_argument('--verbose', '-v', help="Verbose", action='store_true', default=False)
+    parser = argparse.ArgumentParser(
+        description="Run object tracking on image streams",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--config", help="Configuration file", required=False, default="config.yml"
+    )
+    parser.add_argument(
+        "--debug", help="Show labeled images", action="store_true", default=False
+    )
+    parser.add_argument(
+        "--verbose", "-v", help="Verbose", action="store_true", default=False
+    )
 
     return parser.parse_args()
 

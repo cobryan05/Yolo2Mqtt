@@ -1,4 +1,4 @@
-''' URL-backed image source class '''
+""" URL-backed image source class """
 
 from collections.abc import Iterator
 from threading import Event
@@ -7,11 +7,10 @@ import urllib.request
 import cv2
 import numpy as np
 
-from . source import Source
+from .source import Source
 
 
 class VideoSource(Source):
-
     def __init__(self, paths: list[str]):
         if isinstance(paths, str):
             paths = [paths]
