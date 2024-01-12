@@ -28,6 +28,12 @@ from src.watcher import Watcher
 MQTT_KEY_EVENT_NAME = "name"
 MQTT_KEY_SLOTS = "slots"
 
+TRACKER_DEVICE_ID = "C47R4CK3R"
+
+ORIGIN_NAME = "yolo2mqtt"
+ORIGIN_VER = "0.1"
+ORIGIN_URL = "https://github.com/cobryan05/Yolo2Mqtt"
+
 RE_GROUP_CAMERA = "camera"
 RE_GROUP_OBJID = "objectId"
 
@@ -188,9 +194,14 @@ class InteractionTracker:
         if entityId not in self._discoveryPublished:
             self._discoveryPublished.add(entityId)
             configTopic = f"{mqttConfigTopic}/config"
-            friendlyName = f"{self._config.homeAssistant.entityPrefix} - [{eventKey.name.replace('/','|')}] [{context.name}]"
+            friendlyName = f"[{eventKey.name.replace('/','|')}] [{context.name}]"
             entityCfg = {
                 "name": friendlyName,
+                "device": {
+                    "identifiers": [TRACKER_DEVICE_ID],
+                    "name": self._config.homeAssistant.deviceName,
+                },
+                "origin": {"name": ORIGIN_NAME, "sw": ORIGIN_VER, "url": ORIGIN_URL},
                 "friendly_name": friendlyName,
                 "unique_id": entityId,
                 "state_topic": stateTopic,

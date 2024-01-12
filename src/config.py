@@ -17,6 +17,7 @@ validKeys = [
     "discoveryEnabled",
     "discoveryPrefix",
     "entityPrefix",
+    "deviceName",
     "interactions",
     "slots",
     "threshold",
@@ -84,6 +85,7 @@ class HomeAssistant:
     discoveryEnabled: bool = False
     discoveryPrefix: str = "homeassistant"
     entityPrefix: str = "Tracker"
+    deviceName: str = "Yolo2Mqtt"
 
 
 @dataclass
@@ -120,7 +122,6 @@ class Model:
 
 class Config:
     def __init__(self, config: dict):
-
         config = Config.validKeys(config)
 
         self._models: dict[str, Model] = {}

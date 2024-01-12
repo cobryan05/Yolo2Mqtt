@@ -23,8 +23,9 @@ recordingManager:
 # HomeAssistant integration will create entities in HA using MQTT AutoDiscovery
 #homeAssistant:
 #  discoveryEnabled: false  # enable publishing AutoDiscovery mqtt topics. This must be true for entities to be created in HomeAssistant
-#  discoveryPrefix: str = "homeassistant"  # AutoDiscovery prefix that HA is watching
-#  entityPrefix: Tracker # Prefix added to entity_ids created in HA
+#  discoveryPrefix: "homeassistant"  # AutoDiscovery prefix that HA is watching
+#  entityPrefix: "Tracker" # Prefix added to entity_ids created in HA
+#  deviceName: "Yolo2Mqtt" # Name of the 'Device' that sensors are grouped under
 
 yolo:
   # device: "cpu" # device name to pass to torch. Can be "cuda" if docker container supports gpu
