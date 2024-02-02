@@ -1,7 +1,8 @@
 """ Class to watch for objects in an image stream """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Event
+from typing import Optional
 import cv2
 import datetime
 import os
@@ -12,13 +13,13 @@ import time
 from signalslot import Signal
 from PIL import Image
 
-from trackerTools.yoloInference import YoloInference
 from trackerTools.bbox import BBox
 from trackerTools.bboxTracker import BBoxTracker
 from trackerTools.objectTracker import ObjectTracker
 from .imgSources.source import Source
 from .valueStatTracker import ValueStatTracker
 from .watchedObject import WatchedObject
+from .inferenceServer import InferenceServer
 
 METAKEY_TRACKED_WATCHED_OBJ = "trackedWatchedObj"
 METAKEY_DETECTIONS = "detections"
@@ -31,11 +32,17 @@ NEW_OBJ_MIN_FRAME_CNT = (
 BBOX_TRACKER_MAX_DIST_THRESH = (
     0.5  # Percent of image a box can move and still be matched
 )
-MAX_DETECT_INTERVAL = 10  # Maximum amount of frames without full detection
+MAX_DETECT_INTERVAL = 4  # Maximum amount of frames without full detection
 MIN_CONF_THRESH = 0.1  # Minimum confidence threshold for display
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Watcher")
+
+
+@dataclass
+class TimingStats:
+    inference: ValueStatTracker = field(default_factory=ValueStatTracker)
+    tracking: ValueStatTracker = field(default_factory=ValueStatTracker)
 
 
 class Watcher:
@@ -45,27 +52,40 @@ class Watcher:
 
     def __init__(
         self,
-        source: Source,
-        model: YoloInference,
-        refreshDelay: float = 1.0,
+        model: str,
+        inferenceServer: InferenceServer,
         userData=None,
         timelapseDir: str = None,
         timelapseInterval: int = -1,
-        debug: bool = False,
         maxNoFrameSec: int = 30,
     ):
-        self._source: Source = source
-        self._model: YoloInference = model
-        self._delay: float = refreshDelay
         self._stopEvent: Event = Event()
         self._objTracker: ObjectTracker = ObjectTracker(
             distThresh=BBOX_TRACKER_MAX_DIST_THRESH
         )
         self._userData = userData
-        self._debug = debug
+        self._inferenceServer: InferenceServer = inferenceServer
+        self._model = model
+
+        self._timingStats: TimingStats = TimingStats()
+
+        # Configure timelapses
         self._timelapseDir: str = timelapseDir
         self._timelapseInterval: int = timelapseInterval
-        self._maxNoFrameInterval: int = maxNoFrameSec
+        self._timelapseNext: Optional[float] = (
+            0 if timelapseDir and timelapseInterval > 0 else None
+        )
+        if self._timelapseDir:
+            try:
+                os.makedirs(self._timelapseDir, mode=555, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Failed to initialize timelapses: {e}")
+                self._timelapseNext = None
+
+        self._framesUntilInference: int = 0
+
+        self._maxNoFrameInterval: int = maxNoFrameSec  # TODO: Handle this
+
         self._newObjSignal: Signal = Signal(args=["obj", "userData"])
         self._lostObjSignal: Signal = Signal(args=["obj", "userData"])
         self._updatedObjSignal: Signal = Signal(args=["obj", "userData"])
@@ -98,277 +118,244 @@ class Watcher:
     def disconnectImageUpdatedSignal(self, slot):
         return self._imgUpdatedSignal.disconnect(slot)
 
-    def run(self):
-        logger.info(
-            f"Starting Watcher with [{self._source}], refreshing every {self._delay} seconds"
+    def pushFrame(self, image: np.array):
+        """Process the next frame
+
+        Args:
+            image (np.array): frame to process
+        """
+        # self._checkTimelapse(image)
+
+        runInference = False
+        self._framesUntilInference -= 1
+        if self._framesUntilInference > 0:
+            runInference = self._runTracking(image)
+        else:
+            runInference = True
+            self._framesUntilInference = MAX_DETECT_INTERVAL
+
+        if runInference:
+            self._runInference(image)
+            self._imgUpdatedSignal.emit(image=image, userData=self._userData)
+
+    def _checkTimelapse(self, image: np.array) -> None:
+        """Check if the current image should be saved as a timelapse
+
+        Args:
+            image (np.array): current image
+        """
+        if self._timelapseNext is None:
+            return
+
+        if time.time() > self._timelapseNext:
+            try:
+                self.saveTimelapse(image)
+                self._timelapseNext = time.time() + self._timelapseInterval
+            except Exception as e:
+                logger.error(f"Failed to save timelapse for {self._source}: {str(e)}")
+
+    def _runTracking(self, image: np.array) -> bool:
+        """Run openCV tracking on the given image and updates the trackers
+
+        Args:
+            image (np.array): image to run trackign on
+
+        Returns:
+            bool: returns 'True' to indicate a full inference should be run
+        """
+
+        start: float = time.time()
+        trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(
+            image=image
+        )
+        self._timingStats.tracking.addValue(time.time() - start)
+
+        # If an object was lost then run inference
+        if len(lostObjs) > 0:
+            return True
+
+        # If not going to run inference then be sure to update location of tracked objects.
+        self.processTrackedItems(trackedObjs, newObjs, lostObjs, detectedKeys, False)
+        # # TODO: Clean this up. It's a quick hack to just put this here
+        # for key, obj in trackedObjs.items():
+        #     trackedObj: WatchedObject = obj.metadata.get(
+        #         METAKEY_TRACKED_WATCHED_OBJ, None
+        #     )
+        #     if trackedObj.bbox != obj.bbox:
+        #         trackedObj.updateBbox(obj.bbox)
+        #         self._updatedObjSignal.emit(obj=trackedObj, userData=self._userData)
+
+        return False
+
+    def annotateImage(
+        self, image: np.array, prefixInfo: str = "", postfixInfo: str = ""
+    ) -> None:
+        #     for bbox, conf, classIdx, label in yoloRes:
+        #         Watcher.drawBboxOnImage(
+        #             image, bbox, color=(0, 255, 0), thickness=2
+        #         )
+        #         Watcher.drawBboxLabel(
+        #             image, bbox, f"{label}: {conf:0.2}", color=(0, 255, 0), align=7
+        #         )
+
+        for key, tracker in self._objTracker.getTrackedObjects().items():
+            trackedObj: WatchedObject = tracker.metadata[METAKEY_TRACKED_WATCHED_OBJ]
+
+            if trackedObj.conf >= MIN_CONF_THRESH:
+                Watcher.drawTrackerOnImage(image, tracker)
+
+        dbgInfo = (
+            prefixInfo
+            + f"Track: {self._timingStats.tracking.lastValue:0.2}|{self._timingStats.tracking.avg:0.2} "
+            + f"Infer: {self._timingStats.inference.lastValue:0.2}|{self._timingStats.inference.avg:0.2}"
+            + postfixInfo
+        )
+        cv2.putText(
+            image,
+            dbgInfo,
+            (0, 32),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            (0, 0, 255),
+            1,
+            cv2.LINE_AA,
         )
 
-        if self._debug:
-            dbgWin = f"DebugWindow {self._source}"
-            cv2.namedWindow(dbgWin, flags=cv2.WINDOW_NORMAL)
-        else:
-            dbgWin = None
+    def _runInference(self, image: np.array) -> None:
+        """Handle running inference and updating the Watcher state with its results
 
-        runDetectCntdwn = 0
-        frameCnt: int = 0
-        loopStart = time.time()
-        fetchTimeStats: ValueStatTracker = ValueStatTracker()
-        trackTimeStats: ValueStatTracker = ValueStatTracker()
-        inferTimeStats: ValueStatTracker = ValueStatTracker()
-        forceInference: bool = True  # First loop always runs inference
-        lastFrameTime = time.time()
-        lastTimelapse = time.time()
-        nextTimelapse = float("inf")
-        if self._timelapseDir is not None and self._timelapseInterval > 0:
-            try:
-                os.makedirs(self._timelapseDir, mode=555, exist_ok=True)
-                nextTimelapse = lastTimelapse + self._timelapseInterval
-            except Exception as e:
-                logger.error(f"Failed to initialize timelapses: {e}")
+        Args:
+            image (np.array): image to run inference on
 
-        while True:
-            timeElapsed = time.time() - loopStart
-            if self._stopEvent.wait(timeout=max(0, self._delay - timeElapsed)):
-                break
-            loopStart = time.time()
-            try:
-                startTime = time.time()
-                img = self._source.getNextFrame()
-                lastFrameTime = time.time()
-                fetchTimeStats.addValue(lastFrameTime - startTime)
-            except Exception as e:
-                logger.error(f"Exception getting image for {self._source}: {str(e)}")
-                if time.time() - lastFrameTime > self._maxNoFrameInterval:
-                    logger.error(
-                        f"Timeout exceeded! It has been {time.time() - lastFrameTime} since last frame! Restarting source..."
-                    )
-                    self._source.restart()
-                continue
+        """
+        start: float = time.time()
+        results = self._inferenceServer.detect(self._model, image)
+        self._timingStats.inference.addValue(time.time() - start)
 
-            if time.time() > nextTimelapse:
-                try:
-                    self.saveTimelapse(img)
-                    nextTimelapse = time.time() + self._timelapseInterval
-                except Exception as e:
-                    logger.error(
-                        f"Failed to save timelapse for {self._source}: {str(e)}"
-                    )
+        # Now merge any duplicate boxes from the inference
+        detBboxes: list[BBox] = []
+        metadata: list[WatchedObject.Detection] = []
+        SAME_BOX_DIST_THRESH = 0.03
+        SAME_BOX_SIZE_THRESH = 0.9
+        for bbox, conf, objClass, label in results:
+            detectInfo = Watcher._DetectionInfo(
+                detection=WatchedObject.Detection(label, conf, bbox)
+            )
 
-            # Just run object tracking if not scheduled to run inference
-            runInference: bool = forceInference or runDetectCntdwn <= 0
-            if not runInference:
-                startTime = time.time()
-                trackedObjs, _, lostObjs, detectedKeys = self._objTracker.update(
-                    image=img
+            # Check if this may be a second detection of the same object
+            dupIdx = -1
+            for idx, prevDet in enumerate(detBboxes):
+                if detectInfo.detection.bbox.similar(
+                    prevDet, SAME_BOX_DIST_THRESH, SAME_BOX_SIZE_THRESH
+                ):
+                    dupIdx = idx
+                    break
+
+            # Merge any duplicate boxes into one
+            if dupIdx != -1:
+                # Add this detection to the original detection list
+                metadata[dupIdx][METAKEY_DETECTIONS].append(detectInfo)
+            else:
+                # Add new detection
+                detBboxes.append(bbox)
+                metadata.append({METAKEY_DETECTIONS: [detectInfo]})
+
+        def metaCompare(
+            trackedInfo: tuple[BBox, dict], detectedInfo: tuple[BBox, dict]
+        ) -> float:
+            """This function returns confidence that two objects are the same object.
+            This will influence matching detected objects with already-tracked objects
+            """
+            trackedBbox, trackedMeta = trackedInfo
+            detectedBbox, detectMeta = detectedInfo
+            assert METAKEY_DETECTIONS in detectMeta
+            assert METAKEY_TRACKED_WATCHED_OBJ in trackedMeta
+
+            newDetInfos: list[Watcher._DetectionInfo] = detectMeta[METAKEY_DETECTIONS]
+            trackedObj: WatchedObject = trackedMeta[METAKEY_TRACKED_WATCHED_OBJ]
+
+            bestLabelConf: float = 0.0
+            for detInfo in newDetInfos:
+                bestLabelConf = max(
+                    trackedObj.labelConf(detInfo.detection.label), bestLabelConf
                 )
-                trackTimeStats.addValue(time.time() - startTime)
-                runDetectCntdwn -= 1
-                # If an object was lost then run inference
-                if len(lostObjs) > 0:
-                    runInference = True
+
+            if not trackedBbox.similar(detectedBbox):
+                bestLabelConf *= 0.5
+            return bestLabelConf
+
+        # Run the object tracker, updating it with the current inference detections
+        trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(
+            image=image,
+            detections=detBboxes,
+            metadata=metadata,
+            metadataComp=metaCompare,
+            mergeMetadata=True,
+        )
+
+        self.processTrackedItems(trackedObjs, newObjs, lostObjs, detectedKeys, True)
+
+    def processTrackedItems(
+        self, trackedObjs, newObjs, lostObjs, detectedKeys, wasInference
+    ):
+        # Process each tracked item
+        for key, obj in trackedObjs.items():
+            trackedObj: WatchedObject = obj.metadata.get(
+                METAKEY_TRACKED_WATCHED_OBJ, None
+            )
+
+            # Pop any temporary detection info off that may be on the tracked object
+            detBboxes: list[Watcher._DetectionInfo] = obj.metadata.pop(
+                METAKEY_DETECTIONS, []
+            )
+            if len(detBboxes) > 0:
+                # Update objTracker with the metadata from which we popped off the temporary detection info
+                self._objTracker.updateBox(key, metadata=obj.metadata)
+
+            if key in newObjs:
+                assert trackedObj is None
+                trackedObj: WatchedObject = WatchedObject(objId=key)
+                for detectInfo in detBboxes:
+                    trackedObj.markSeen(detectInfo.detection, newFrame=False)
+                forceInference = True
+                obj.metadata[METAKEY_TRACKED_WATCHED_OBJ] = trackedObj
+                self._objTracker.updateBox(key, metadata=obj.metadata)
+            elif key in lostObjs:
+                # If it was lost before reaching the minimum frame count then remove it
+                if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
+                    logger.debug(f"{trackedObj.label} lost before minimum frame count")
+                    self._objTracker.removeBox(key)
                 else:
-                    # If not going to run inference then be sure to update location of tracked objects.
-                    # TODO: Clean this up. It's a quick hack to just put this here
-                    for key, obj in trackedObjs.items():
-                        trackedObj: WatchedObject = obj.metadata.get(
-                            METAKEY_TRACKED_WATCHED_OBJ, None
+                    trackedObj.markMissing()
+                    forceInference = True
+                    if trackedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
+                        logger.debug(
+                            f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing"
                         )
-                        if trackedObj.bbox != obj.bbox:
-                            trackedObj.updateBbox(obj.bbox)
-                            self._updatedObjSignal.emit(
-                                obj=trackedObj, userData=self._userData
-                            )
-
-            # Run inference if required
-            yoloRes = []
-            if runInference:
-                forceInference = False
-                runDetectCntdwn = MAX_DETECT_INTERVAL
-
-                # Run the image through the model
-                startTime = time.time()
-                logger.debug("Running inference")
-                yoloRes = self._model.runInference(img=img)
-
-                # Now merge any duplicate boxes from the inference
-                detBboxes: list[BBox] = []
-                metadata: list[WatchedObject.Detection] = []
-                SAME_BOX_DIST_THRESH = 0.03
-                SAME_BOX_SIZE_THRESH = 0.9
-                for bbox, conf, objClass, label in yoloRes:
-                    detectInfo = Watcher._DetectionInfo(
-                        detection=WatchedObject.Detection(label, conf, bbox)
-                    )
-
-                    # Check if this may be a second detection of the same object
-                    dupIdx = -1
-                    for idx, prevDet in enumerate(detBboxes):
-                        if detectInfo.detection.bbox.similar(
-                            prevDet, SAME_BOX_DIST_THRESH, SAME_BOX_SIZE_THRESH
-                        ):
-                            dupIdx = idx
-                            break
-
-                    # Merge any duplicate boxes into one
-                    if dupIdx != -1:
-                        # Add this detection to the original detection list
-                        metadata[dupIdx][METAKEY_DETECTIONS].append(detectInfo)
-                    else:
-                        # Add new detection
-                        detBboxes.append(bbox)
-                        metadata.append({METAKEY_DETECTIONS: [detectInfo]})
-
-                def metaCompare(
-                    trackedInfo: tuple[BBox, dict], detectedInfo: tuple[BBox, dict]
-                ) -> float:
-                    """This function returns confidence that two objects are the same object.
-                    This will influence matching detected objects with already-tracked objects"""
-                    trackedBbox, trackedMeta = trackedInfo
-                    detectedBbox, detectMeta = detectedInfo
-                    assert METAKEY_DETECTIONS in detectMeta
-                    assert METAKEY_TRACKED_WATCHED_OBJ in trackedMeta
-
-                    newDetInfos: list[Watcher._DetectionInfo] = detectMeta[
-                        METAKEY_DETECTIONS
-                    ]
-                    trackedObj: WatchedObject = trackedMeta[METAKEY_TRACKED_WATCHED_OBJ]
-
-                    bestLabelConf: float = 0.0
-                    for detInfo in newDetInfos:
-                        bestLabelConf = max(
-                            trackedObj.labelConf(detInfo.detection.label), bestLabelConf
+                        self._lostObjSignal.emit(
+                            obj=trackedObj, userData=self._userData
                         )
+                        self._objTracker.removeBox(key)
+            else:
+                # A previously tracked object, ensure it isn't marked as lost and add any new detections
+                for detectInfo in detBboxes:
+                    trackedObj.markSeen(detectInfo.detection, newFrame=False)
 
-                    if not trackedBbox.similar(detectedBbox):
-                        bestLabelConf *= 0.5
-                    return bestLabelConf
+                self._objTracker.updateBox(key, bbox=trackedObj.bbox)
 
-                # Run the object tracker, updating it with the current inference detections
-                trackedObjs, newObjs, lostObjs, detectedKeys = self._objTracker.update(
-                    image=img,
-                    detections=detBboxes,
-                    metadata=metadata,
-                    metadataComp=metaCompare,
-                    mergeMetadata=True,
-                )
-
-                # Process each tracked item
-                for key, obj in trackedObjs.items():
-                    trackedObj: WatchedObject = obj.metadata.get(
-                        METAKEY_TRACKED_WATCHED_OBJ, None
-                    )
-
-                    # Pop any temporary detection info off that may be on the tracked object
-                    detBboxes: list[Watcher._DetectionInfo] = obj.metadata.pop(
-                        METAKEY_DETECTIONS, []
-                    )
-                    if len(detBboxes) > 0:
-                        # Update objTracker with the metadata from which we popped off the temporary detection info
-                        self._objTracker.updateBox(key, metadata=obj.metadata)
-
-                    if key in newObjs:
-                        assert trackedObj is None
-                        trackedObj: WatchedObject = WatchedObject(objId=key)
-                        for detectInfo in detBboxes:
-                            trackedObj.markSeen(detectInfo.detection, newFrame=False)
+                if wasInference:
+                    trackedObj.markSeen()
+                    # Run inference every frame when there is a new object
+                    if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
                         forceInference = True
-                        obj.metadata[METAKEY_TRACKED_WATCHED_OBJ] = trackedObj
-                        self._objTracker.updateBox(key, metadata=obj.metadata)
-                    elif key in lostObjs:
-                        # If it was lost before reaching the minimum frame count then remove it
-                        if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
-                            logger.debug(
-                                f"{trackedObj.label} lost before minimum frame count"
-                            )
-                            self._objTracker.removeBox(key)
-                        else:
-                            trackedObj.markMissing()
-                            forceInference = True
-                            if trackedObj.framesSinceSeen > LOST_OBJ_REMOVE_FRAME_CNT:
-                                logger.debug(
-                                    f"{trackedObj.label} lost for {trackedObj.framesSinceSeen}, removing"
-                                )
-                                self._lostObjSignal.emit(
-                                    obj=trackedObj, userData=self._userData
-                                )
-                                self._objTracker.removeBox(key)
+                    elif trackedObj.age == NEW_OBJ_MIN_FRAME_CNT:
+                        self._newObjSignal.emit(obj=trackedObj, userData=self._userData)
                     else:
-                        # A previously tracked object, ensure it isn't marked as lost and add any new detections
-                        for detectInfo in detBboxes:
-                            trackedObj.markSeen(detectInfo.detection, newFrame=False)
-                        trackedObj.markSeen()
-                        self._objTracker.updateBox(key, bbox=trackedObj.bbox)
+                        self._updatedObjSignal.emit(
+                            obj=trackedObj, userData=self._userData
+                        )
 
-                        # Run inference every frame when there is a new object
-                        if trackedObj.age < NEW_OBJ_MIN_FRAME_CNT:
-                            forceInference = True
-                        elif trackedObj.age == NEW_OBJ_MIN_FRAME_CNT:
-                            self._newObjSignal.emit(
-                                obj=trackedObj, userData=self._userData
-                            )
-                        else:
-                            self._updatedObjSignal.emit(
-                                obj=trackedObj, userData=self._userData
-                            )
-
-                    logger.debug(f"{key} - {obj.metadata}")
-
-                inferTimeStats.addValue(time.time() - startTime)
-
-            # Only publish if inference was ran and there is a listener for the image
-            should_publish_image = yoloRes and len(self._imgUpdatedSignal.slots) > 0
-
-            if self._debug or should_publish_image:
-                dbgImg = img.copy()
-                for bbox, conf, classIdx, label in yoloRes:
-                    Watcher.drawBboxOnImage(
-                        dbgImg, bbox, color=(0, 255, 0), thickness=2
-                    )
-                    Watcher.drawBboxLabel(
-                        dbgImg, bbox, f"{label}: {conf:0.2}", color=(0, 255, 0), align=7
-                    )
-
-                for key, tracker in self._objTracker.getTrackedObjects().items():
-                    trackedObj: WatchedObject = tracker.metadata[
-                        METAKEY_TRACKED_WATCHED_OBJ
-                    ]
-
-                    if trackedObj.conf >= MIN_CONF_THRESH:
-                        Watcher.drawTrackerOnImage(dbgImg, tracker)
-                dbgInfo = f"Fetch: {fetchTimeStats.lastValue:0.2}|{fetchTimeStats.avg:0.2}  Track: {trackTimeStats.lastValue:0.2}|{trackTimeStats.avg:0.2}  Infer: {inferTimeStats.lastValue:0.2}|{inferTimeStats.avg:0.2}"
-                cv2.putText(
-                    dbgImg,
-                    dbgInfo,
-                    (0, 32),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (0, 0, 255),
-                    1,
-                    cv2.LINE_AA,
-                )
-
-                if yoloRes:
-                    pilImg: Image = Image.fromarray(
-                        cv2.cvtColor(dbgImg, cv2.COLOR_BGR2RGB)
-                    )
-                    self._imgUpdatedSignal.emit(image=pilImg, userData=self._userData)
-
-                if self._debug:
-                    cv2.imshow(dbgWin, dbgImg)
-                    cv2.waitKey(1)
-
-            logger.debug(f"---End of frame {frameCnt} [{self._source}]---")
-            frameCnt += 1
-
-        logger.info(f"!!!Exit frame capture loop for {self._source}!!!")
-
-    def saveTimelapse(self, img: np.array):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        output_path = os.path.join(self._timelapseDir, f"{timestamp}.png")
-        logger.info(f"Saving timelapse {output_path}")
-        imgRgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        pilImg: Image = Image.fromarray(imgRgb)
-        pilImg.save(output_path)
+            logger.debug(f"{key} - {obj.metadata}")
 
     @staticmethod
     def drawTrackerOnImage(
@@ -392,7 +379,7 @@ class Watcher:
             )
             color = (0, 0, red)
 
-        label = f"{tracker.key} - {watchedObj.label} {watchedObj.conf:0.2}"
+        label = f"{tracker.key} - [{watchedObj.objId}]{watchedObj.label} {watchedObj.conf:0.2}"
         if watchedObj.framesSinceSeen > 0:
             label += f" [missing {watchedObj.framesSinceSeen}|{watchedObj.age}]"
         Watcher.drawBboxOnImage(img, tracker.bbox, color=color)
