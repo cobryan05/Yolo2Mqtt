@@ -28,7 +28,7 @@ class RtspSource(Source):
 
         self._rtspUrl = rtspUrl
         self._proxyRtspUrl = None
-        self._vid: cv2.VideoCapture = self._getCap()
+        self._vid: cv2.VideoCapture = None
         self._stopEvent: Event = Event()
         self._frameAvail: Event = Event()
         self._rtspApi = rtspApi
@@ -96,6 +96,7 @@ class RtspSource(Source):
 
     def _captureThread(self):
         logger.info(f"RTSP capture thread started for {self._name}")
+        self._vid = self._getCap()
         minRetryTime = 0.05
         maxRetryTime = 30
         retryTime = minRetryTime

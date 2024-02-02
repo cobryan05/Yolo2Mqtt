@@ -39,9 +39,6 @@ class EventFileWriter:
     """ Timer to stop fileRecorder after a delay """
     stopDelayTimer: Timer = None
 
-    """ Count of number of outstanding requests to record this event """
-    refCnt: int = 1
-
 
 class StreamEventRecorder:
     """Manages multiple recordings from one delayed stream
@@ -60,16 +57,15 @@ class StreamEventRecorder:
         self._ffmpegCmd = ffmpegCmd
 
     def startEventRecording(self, eventParams: MediaManager.EventParams) -> str:
-        """Starts recording an event, or increments refCnt of an active recording of this event"""
+        """Starts recording an event, or adds a reference to an active recording of this event"""
         """ Returns the filename of the recorded event, or None if no recording started """
         recording = self._recorders.get(eventParams.eventName, None)
         if recording is not None:
             if recording.stopDelayTimer is not None:
                 recording.stopDelayTimer.cancel()
                 recording.stopDelayTimer = None
-            recording.refCnt += 1
             logger.info(
-                f"Extending recording of {eventParams.eventName} from {self._stream.rtspUrl}. Refcnt is now {recording.refCnt}"
+                f"Extending recording of {eventParams.eventName} from {self._stream.rtspUrl}. There are now {len(self._recorders)} stream references"
             )
             if recording.fileRecorder.running():
                 return None
@@ -79,19 +75,19 @@ class StreamEventRecorder:
 
         filePath = self._mediaMan.getRecordingPath(eventParams)
 
-        logger.info(
-            f"Starting recording of {eventParams.eventName} from {self._stream.rtspUrl} to {filePath}"
-        )
-
         self._recorders[eventParams.eventName] = EventFileWriter(
             fileRecorder=RtspRecorder(
                 self._stream.rtspUrl, filePath, ffmpegCmd=self._ffmpegCmd
             )
         )
+        logger.info(
+            f"Starting recording of {eventParams.eventName} from {self._stream.rtspUrl} to {filePath}. There are now {len(self._recorders)} stream refereneces"
+        )
+
         return filePath
 
     def stopEventRecording(self, eventParams: MediaManager.EventParams):
-        """Decrements recording refCnt, and stops the stream if it reaches zero"""
+        """Removes recording reference, and stops the stream if there are no more references"""
         recording = self._recorders.get(eventParams.eventName, None)
         if recording is None:
             logger.warning(
@@ -99,25 +95,19 @@ class StreamEventRecorder:
             )
             return
 
-        recording.refCnt -= 1
-        if recording.refCnt > 0:
+        if recording.stopDelayTimer is None:
+            recording.stopDelayTimer = Timer(
+                self._stream.delay,
+                lambda: self._stopRecording(eventParams.eventName),
+            )
+            recording.stopDelayTimer.start()
             logger.info(
-                f"Decrementing refCnt of {eventParams.eventName} from {self._stream.rtspUrl}. RefCnt is now {recording.refCnt}"
+                f"Starting timer for {self._stream.delay}s to stop recording of {eventParams.eventName} from {self._stream.rtspUrl}"
             )
         else:
-            if recording.stopDelayTimer is None:
-                recording.stopDelayTimer = Timer(
-                    self._stream.delay,
-                    lambda: self._stopRecording(eventParams.eventName),
-                )
-                recording.stopDelayTimer.start()
-                logger.info(
-                    f"Starting timer for {self._stream.delay}s to stop recording of {eventParams.eventName} from {self._stream.rtspUrl}"
-                )
-            else:
-                logger.warning(
-                    f"Timer to stop recording of {eventParams.eventName} from {self._stream.rtspUrl} already exists!"
-                )
+            logger.warning(
+                f"Timer to stop recording of {eventParams.eventName} from {self._stream.rtspUrl} already exists!"
+            )
         return
 
     def _stopRecording(self, eventName: str):
