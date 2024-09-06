@@ -1,16 +1,16 @@
 """ URL-backed image source class """
 
-
 import numpy as np
 import io
 from PIL import Image
 from src.mqttClient import MqttClient
 from .source import Source
-from queue import Queue
-
+from queue import Queue, Empty
 
 
 class MqttSource(Source):
+    TIMEOUT = 5
+
     def __init__(self, mqtt_client: MqttClient, topic: str):
         self._topic: str = topic
         self._mqtt_client: MqttClient = mqtt_client
@@ -24,13 +24,19 @@ class MqttSource(Source):
         return f"MqttSource [{self._topic}]"
 
     def _pushFrame(self, mqttMsg):
-      png_data = mqttMsg.payload
-      image = Image.open(io.BytesIO(png_data))
-      image_bytes = np.array(image)
-      self._frameQueue.put(image_bytes)
+        try:
+            png_data = mqttMsg.payload
+            image = Image.open(io.BytesIO(png_data))
+            image_bytes = np.array(image)
+            self._frameQueue.put(image_bytes)
+        except Exception as e:
+            pass
 
     def getForceInference(self) -> bool:
         return True
 
     def getNextFrame(self) -> np.array:
-        return self._frameQueue.get()
+        try:
+            return self._frameQueue.get(block=True, timeout=MqttSource.TIMEOUT)
+        except Empty:
+            raise TimeoutError

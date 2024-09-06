@@ -203,7 +203,10 @@ class Yolo2Mqtt:
         while not common.stopEvent.is_set():
             try:
                 start: float = time.time()
-                nextFrame = source.getNextFrame()
+                try:
+                    nextFrame = source.getNextFrame()
+                except TimeoutError:
+                    continue
                 fetchStats.addValue(time.time() - start)
 
                 # Process the frame
