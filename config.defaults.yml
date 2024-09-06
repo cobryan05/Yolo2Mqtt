@@ -171,7 +171,8 @@ interactions:
         - car
         - motorcycle
         - horse
-    threshold: 0.3  # fraction of the smallest object that must overlap to count as an interaction
+    threshold: 0.3  #  default 0.5, fraction of the smallest object that must overlap to count as an interaction
+    # maxDist: 0.0  #  value 0.0-1.0, if two objects are closer than this % of image to eachother raise an event
 
     # exactly how minTime and expireTime work may change as it is currently not great, but currently:
     #  When two slot items overlap by threshold, a timer is started.
