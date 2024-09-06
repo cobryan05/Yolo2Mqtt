@@ -11,6 +11,7 @@ import pathlib
 import sys
 import yaml
 
+from typing import Optional
 from dataclasses import dataclass, field
 from threading import Lock
 
@@ -27,6 +28,8 @@ from src.watcher import Watcher
 
 MQTT_KEY_EVENT_NAME = "name"
 MQTT_KEY_SLOTS = "slots"
+MQTT_KEY_IOS = "ios"
+MQTT_KEY_DIST = "dist"
 
 TRACKER_DEVICE_ID = "C47R4CK3R"
 
@@ -146,13 +149,13 @@ class InteractionTracker:
                         context.events[eventKey] = trackedEvent
                     else:
                         if (
-                            not trackedEvent.published
-                            and time.time()
+                            time.time()
                             > trackedEvent.firstTimestamp + event.event.minTime
                         ):
+                            if not trackedEvent.published:
+                                self.publishDiscoveryEvent(context, eventKey, "ON")
                             trackedEvent.published = True
-                            self.publishEvent(context, eventKey)
-                            self.publishDiscoveryEvent(context, eventKey, "ON")
+                            self.publishEvent(context, eventKey, event)
                     trackedEvent.lastTimestamp = time.time()
 
                 # Check for expired events
@@ -165,17 +168,25 @@ class InteractionTracker:
                         interaction.expireTime
                     ):
                         if trackedEvent.published:
-                            self.publishEvent(context, eventKey, clear=True)
+                            self.publishEvent(context, eventKey, None, clear=True)
                             self.publishDiscoveryEvent(context, eventKey, "OFF")
                         context.events.pop(eventKey)
 
                 if self._debug:
                     InteractionTracker.debugContext(context)
 
-    def publishEvent(self, context: Context, eventKey: EventKey, clear: bool = False):
+    def publishEvent(
+        self,
+        context: Context,
+        eventKey: EventKey,
+        eventInfo: Optional[ContextChecker.EventInfo],
+        clear: bool = False,
+    ):
         data = {}
         data[MQTT_KEY_EVENT_NAME] = eventKey.key
         data[MQTT_KEY_SLOTS] = eventKey.slots
+        data[MQTT_KEY_IOS] = eventInfo.pairInfo.ios if eventInfo else 0
+        data[MQTT_KEY_DIST] = eventInfo.pairInfo.dist if eventInfo else 0
         topic = self._getEventTopic(context, eventKey)
         if clear:
             self._mqtt.publish(topic, None, True)

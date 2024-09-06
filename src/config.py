@@ -21,6 +21,7 @@ validKeys = [
     "interactions",
     "slots",
     "threshold",
+    "maxDist",
     "minTime",
     "expireTime",
     "cameras",
@@ -92,6 +93,7 @@ class HomeAssistant:
 class Interaction:
     slots: list[list[str]]
     threshold: float = 0.5
+    maxDist: float = 0.0
     minTime: int = 3
     expireTime: int = 5
 
