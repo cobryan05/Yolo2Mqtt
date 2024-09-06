@@ -118,7 +118,7 @@ class Watcher:
     def disconnectImageUpdatedSignal(self, slot):
         return self._imgUpdatedSignal.disconnect(slot)
 
-    def pushFrame(self, image: np.array):
+    def pushFrame(self, image: np.array, forceInference: bool = False):
         """Process the next frame
 
         Args:
@@ -134,7 +134,7 @@ class Watcher:
             runInference = True
             self._framesUntilInference = MAX_DETECT_INTERVAL
 
-        if runInference:
+        if runInference or forceInference:
             self._runInference(image)
             self._imgUpdatedSignal.emit(image=image, userData=self._userData)
 

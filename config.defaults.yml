@@ -126,6 +126,9 @@ cameras:
     model: testModel
     refresh: 1
     publishImages: true
+#   mqttCam: # Receives images via a MQTT topic.  Publish individual frames to the MQTT topic
+#       mqttTopic: /myhome/ObjectTrackers/cameras/mqttCam/image
+#       model: testModel
 #   exampleRtsp: # Only RTSP cameras support recording videos
 #      rtspUrl: rtsp://192.168.15.75:8554/unicast
 #      model: testModel

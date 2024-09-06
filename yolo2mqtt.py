@@ -33,6 +33,7 @@ from src.valueStatTracker import ValueStatTracker
 from src.imgSources.source import Source
 from src.imgSources.rtspSource import RtspSource
 from src.imgSources.urlSource import UrlSource
+from src.imgSources.mqttSource import MqttSource
 from src.imgSources.videoSource import VideoSource
 # fmt: on
 
@@ -70,6 +71,7 @@ class GrabberThreadCommonArgs:
     mqttQueue: Queue[MqttItem] = field(default_factory=Queue)
     dbgQueue: Queue[DebugImage] = field(default_factory=partial(Queue, 1))
     stopEvent: threading.Event = field(default_factory=threading.Event)
+    mqttClient: MqttClient = None
     rtspApi: RtspSimpleServer = None
     inferenceServer: InferenceServer = None
     mqttImagePrefix: str = None
@@ -120,6 +122,7 @@ class Yolo2Mqtt:
             ),
             mqttDetPrefix=self._mqttDetTopic,
             mqttImagePrefix=self._mqttImageTopic,
+            mqttClient=self._mqtt,
             debug=args.debug,
         )
 
@@ -139,7 +142,10 @@ class Yolo2Mqtt:
     def _grabberThreadFunc(id: str, config: Camera, common: GrabberThreadCommonArgs):
         logger.info(f"Starting grabber thread for {id}")
         source = Yolo2Mqtt._getSource(
-            name=id, cameraConfig=config, rtspApi=common.rtspApi
+            name=id,
+            cameraConfig=config,
+            rtspApi=common.rtspApi,
+            mqttClient=common.mqttClient,
         )
         if source is None:
             logger.error(f"Could not load configured source for '{id}'")
@@ -201,7 +207,7 @@ class Yolo2Mqtt:
                 fetchStats.addValue(time.time() - start)
 
                 # Process the frame
-                watcher.pushFrame(nextFrame)
+                watcher.pushFrame(nextFrame, forceInference=source.getForceInference())
 
                 doTimelapse: bool = (
                     nextTimelapse is not None and time.time() > nextTimelapse
@@ -236,7 +242,10 @@ class Yolo2Mqtt:
 
     @staticmethod
     def _getSource(
-        name: str, cameraConfig: Camera, rtspApi: RtspSimpleServer = None
+        name: str,
+        cameraConfig: Camera,
+        rtspApi: RtspSimpleServer = None,
+        mqttClient: MqttClient = None,
     ) -> Source:
         """Returns a source for the given camera config"""
         if cameraConfig.rtspUrl is not None:
@@ -251,6 +260,9 @@ class Yolo2Mqtt:
                 user=cameraConfig.username,
                 password=cameraConfig.password,
             )
+
+        if cameraConfig.mqttTopic is not None:
+            return MqttSource(mqttClient, cameraConfig.mqttTopic)
 
         return None
 

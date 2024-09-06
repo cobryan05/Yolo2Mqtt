@@ -27,6 +27,7 @@ validKeys = [
     "cameras",
     "rtspUrl",
     "videoPath",
+    "mqttTopic",
     "imageUrl",
     "refresh",
     "model",
@@ -102,6 +103,7 @@ class Interaction:
 class Camera:
     rtspUrl: str = None
     videoPath: str = None
+    mqttTopic: str = None
     imageUrl: str = None
     username: str = None
     password: str = None

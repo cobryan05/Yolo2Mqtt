@@ -70,8 +70,11 @@ class MqttClient:
         )
         self._mqtt.publish(publish_topic, value, retain=retain)
 
-    def subscribe(self, topic: str, callback: Callable[[str], None]):
-        subscribe_topic = "{}/{}".format(self._prefix, topic)
+    def subscribe(self, topic: str, callback: Callable[[str], None], absoluteTopic=False):
+        if absoluteTopic:
+            subscribe_topic = topic
+        else:
+            subscribe_topic = "{}/{}".format(self._prefix, topic)
         assert topic not in self._subMap
 
         self._subMap[topic] = MqttClient.SubMapData(callback=callback)
@@ -116,6 +119,10 @@ class MqttClient:
     ):
         # print(f"Received topic|message: {msg.topic}|{msg.payload.decode()}")
         for topic, data in self._subMap.items():
-            topic = f"{self._prefix}/{topic.rstrip('#')}"
-            if msg.topic.startswith(topic) and callable(data.callback):
+            prefixedTopic = f"{self._prefix}/{topic.rstrip('#')}"
+            if msg.topic.startswith(prefixedTopic) and callable(data.callback):
+                data.callback(msg)
+            else: # TODO: Deal with prefix?
+              topic = f"{topic.rstrip('#')}"
+              if msg.topic.startswith(topic) and callable(data.callback):
                 data.callback(msg)
