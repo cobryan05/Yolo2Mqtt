@@ -132,7 +132,7 @@ cameras:
 #   exampleRtsp: # Only RTSP cameras support recording videos
 #      rtspUrl: rtsp://192.168.15.75:8554/unicast
 #      model: testModel
-#      refresh: 1.0 # Seconds between grabbing a frame to process
+#      refresh: 1.0 # Seconds between grabbing a frame to process, 0 for no throttling
 #      rewindSec: 20  # seconds of rewind buffer to keep for camera. Determines how much preroll is recorded when an event is detected.
 #      timelapseDir: None # Path to save periodic images from the camera stream
 #      timelapseInterval: 0 # Interval to save timelapses to timelapseDir

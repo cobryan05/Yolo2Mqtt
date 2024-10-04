@@ -228,6 +228,10 @@ class Yolo2Mqtt:
                     Yolo2Mqtt.saveTimelapse(nextFrame, config.timelapseDir)
                     nextTimelapse = time.time() + config.timelapseInterval
 
+                # Delay frame processing
+                if config.refresh > 0:
+                  common.stopEvent.wait(config.refresh)
+
             except Exception as e:
                 logger.error(f"Exception for '{id}': {e}")
                 continue
